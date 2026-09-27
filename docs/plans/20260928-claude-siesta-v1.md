@@ -289,11 +289,11 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Create: `src/time.rs`
 - Modify: `src/lib.rs`
 
-- [ ] `src/time.rs`: `parse_rfc3339(&str) -> Option<SystemTime>` supporting fractional seconds, `Z` and `+hh:mm`/`-hh:mm`; `format_local_minute(SystemTime) -> String` (`2026-09-27 12:40`, local time via `localtime_r` from `nix::libc`, which `nix` re-exports - no separate `libc` dependency); `format_idle(Duration) -> String` (`45m`, `3h 12m`, `26h 12m`)
-- [ ] `src/transcript.rs`: `LastAssistant { at: SystemTime, text: String }`; `last_assistant(bytes: &[u8], started_mid_file: bool) -> Option<LastAssistant>` implementing the Technical Details / Idle rules (partial first line dropped, text from the last record that had text, timestamp from the last assistant record); `find_transcript(&Paths, Profile, &ConvId) -> Option<PathBuf>` globbing `projects/*/<conv>.jsonl` with `std::fs::read_dir`; `read_tail(&Path) -> io::Result<(Vec<u8>, bool)>` reading at most 400 KiB
-- [ ] `idle(now, last: Option<&LastAssistant>, map: &MapEntry) -> Duration` with the cc-map `ts` fallback and future-timestamp clamp
-- [ ] write tests: content as array with text and tool_use items, content as string, last record tool-only (text from the earlier one), no assistant records, a partial first line when mid-file, malformed lines interleaved, `+02:00` offset timestamp, future timestamp -> zero idle, `find_transcript` in a temp dir for both profiles
-- [ ] `mise run check` passes
+- [x] `src/time.rs`: `parse_rfc3339(&str) -> Option<SystemTime>` supporting fractional seconds, `Z` and `+hh:mm`/`-hh:mm`; `format_local_minute(SystemTime) -> String` (`2026-09-27 12:40`, local time via `localtime_r` from `nix::libc`, which `nix` re-exports - no separate `libc` dependency); `format_idle(Duration) -> String` (`45m`, `3h 12m`, `26h 12m`)
+- [x] `src/transcript.rs`: `LastAssistant { at: SystemTime, text: String }`; `last_assistant(bytes: &[u8], start: TailStart) -> Option<LastAssistant>` (`TailStart { FileStart, MidFile }` instead of a bool, per the enum-over-bool rule) implementing the Technical Details / Idle rules (partial first line dropped, text from the last record that had text, timestamp from the last assistant record); `find_transcript(&Paths, Profile, &ConvId) -> Option<PathBuf>` globbing `projects/*/<conv>.jsonl` with `std::fs::read_dir`; `read_tail(&Path) -> io::Result<(Vec<u8>, TailStart)>` reading at most 400 KiB
+- [x] `idle(now, last: Option<&LastAssistant>, map: &MapEntry) -> Duration` with the cc-map `ts` fallback and future-timestamp clamp
+- [x] write tests: content as array with text and tool_use items, content as string, last record tool-only (text from the earlier one), no assistant records, a partial first line when mid-file, malformed lines interleaved, `+02:00` offset timestamp, future timestamp -> zero idle, `find_transcript` in a temp dir for both profiles
+- [x] `mise run check` passes
 
 ### Task 6: agterm tree model and parsing
 
