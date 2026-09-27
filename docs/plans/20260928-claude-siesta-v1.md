@@ -276,11 +276,11 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Modify: `src/ccmap.rs` (Task 3 created it with `SessionId` and `Profile`)
 - Modify: `src/lib.rs`
 
-- [ ] newtypes `SessionId` (normalized to uppercase), `ConvId`; enum `Profile { Personal, Work }` (unknown profile string -> `Personal`)
-- [ ] `MapEntry { conv: ConvId, profile: Profile, cwd: PathBuf, ts: SystemTime, pid: Option<i32> }`; `MapEntry::parse(&str) -> Result<MapEntry, CcMapError>`, tolerating unknown keys, a null or missing `pid`, a missing `cwd` (empty path); a missing `conv` is an error
-- [ ] `MapEntry::load(&Paths, &SessionId) -> Result<Option<MapEntry>, CcMapError>` (missing file = `Ok(None)`)
-- [ ] write tests with fixtures shaped exactly like the External contracts example: full entry, `pid: null`, no `pid`, extra `tsession`/`twindow`, `profile: work`, missing `conv` (error), malformed JSON (error)
-- [ ] `mise run check` passes
+- [x] newtypes `SessionId` (normalized to uppercase), `ConvId`; enum `Profile { Personal, Work }` (unknown profile string -> `Personal`)
+- [x] `MapEntry { conv: ConvId, profile: Profile, cwd: PathBuf, ts: SystemTime, pid: Option<i32> }`; `MapEntry::parse(&str) -> Result<MapEntry, CcMapError>`, tolerating unknown keys, a null or missing `pid`, a missing `cwd` (empty path); a missing `conv` is an error (an empty `conv` or a missing `ts` is also an error; a missing `profile` is `Personal`)
+- [x] `MapEntry::load(&Paths, &SessionId) -> Result<Option<MapEntry>, CcMapError>` (missing file = `Ok(None)`)
+- [x] write tests with fixtures shaped exactly like the External contracts example: full entry, `pid: null`, no `pid`, extra `tsession`/`twindow`, `profile: work`, missing `conv` (error), malformed JSON (error)
+- [x] `mise run check` passes
 
 ### Task 5: Transcript tail and idle
 
