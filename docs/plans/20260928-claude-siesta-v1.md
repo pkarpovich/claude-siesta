@@ -316,10 +316,10 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Create: `src/rule.rs`
 - Modify: `src/lib.rs`
 
-- [ ] `Mode { Daemon, Manual }`, `Decision { Park, Skip(SkipReason) }`, `SkipReason { NotClaude, NotMapped, PidNotClaude, AgentWorking, Flagged, Selected, NotIdleEnough }`
-- [ ] `RuleInput { session: &Session, entry: Option<&MapEntry>, pid_is_claude: bool, idle: Duration, park_after: Duration, mode: Mode }` and `decide(&RuleInput) -> Decision` in the exact order of Technical Details / Park rule
-- [ ] write a table test: one row per `SkipReason` (each failing exactly that check), the all-pass `Park` row, Manual mode parking a selected session and a session idle 1 minute, Manual mode still refusing flagged / agent working / not claude / not mapped, idle exactly equal to `park_after` parks
-- [ ] `mise run check` passes
+- [x] `Mode { Daemon, Manual }`, `Decision { Park, Skip(SkipReason) }`, `SkipReason { NotClaude, NotMapped, PidNotClaude, AgentWorking, Flagged, Selected, NotIdleEnough }`
+- [x] `RuleInput { session: &Session, entry: Option<&MapEntry>, pid_is_claude: bool, idle: Duration, park_after: Duration, mode: Mode }` and `decide(&RuleInput) -> Decision` in the exact order of Technical Details / Park rule
+- [x] write a table test: one row per `SkipReason` (each failing exactly that check), the all-pass `Park` row, Manual mode parking a selected session and a session idle 1 minute, Manual mode still refusing flagged / agent working / not claude / not mapped, idle exactly equal to `park_after` parks
+- [x] `mise run check` passes
 
 ### Task 8: State file and log
 
