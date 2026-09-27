@@ -46,6 +46,13 @@ impl Profile {
             _ => Profile::Personal,
         }
     }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Profile::Personal => "personal",
+            Profile::Work => "work",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

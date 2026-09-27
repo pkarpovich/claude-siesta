@@ -328,10 +328,10 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Create: `src/log.rs`
 - Modify: `src/lib.rs`
 
-- [ ] `src/state.rs`: `ParkState` with the fields of Technical Details / State file (serde); `write(&Paths, &ParkState)` atomic via temp file + rename in the state dir (create the dir if missing); `read(&Paths, &SessionId) -> Option<ParkState>` (unreadable = `None`); `set_placeholder_pid`; `remove`; `list(&Paths) -> Vec<ParkState>`; `cleanup(&Paths, seen: &[SessionId]) -> Vec<SessionId>` removing files for unseen ids
-- [ ] `src/log.rs`: `Action { Start, Park, Skip, ParkFailed, Cleanup }` and `append(&Paths, LogLine)` writing one line per the Technical Details / Log format; a pure `format_line(&LogLine, SystemTime) -> String` used by `append`; `last_action(&Paths, &SessionId) -> Option<String>` for `status` (reads the log's last 64 KiB)
-- [ ] write tests in a temp dir: write/read round trip, overwrite, corrupt file reads as `None`, `set_placeholder_pid` keeps other fields, `cleanup` removes only unseen ids, `list`; `format_line` never includes anything but the documented fields; `last_action` picks the newest line for the id
-- [ ] `mise run check` passes
+- [x] `src/state.rs`: `ParkState` with the fields of Technical Details / State file (serde); `write(&Paths, &ParkState)` atomic via temp file + rename in the state dir (create the dir if missing); `read(&Paths, &SessionId) -> Option<ParkState>` (unreadable = `None`); `set_placeholder_pid`; `remove`; `list(&Paths) -> Vec<ParkState>`; `cleanup(&Paths, seen: &[SessionId]) -> Vec<SessionId>` removing files for unseen ids
+- [x] `src/log.rs`: `Action { Start, Park, Skip, ParkFailed, Cleanup }` and `append(&Paths, LogLine)` writing one line per the Technical Details / Log format; a pure `format_line(&LogLine, SystemTime) -> String` used by `append`; `last_action(&Paths, &SessionId) -> Option<String>` for `status` (reads the log's last 64 KiB)
+- [x] write tests in a temp dir: write/read round trip, overwrite, corrupt file reads as `None`, `set_placeholder_pid` keeps other fields, `cleanup` removes only unseen ids, `list`; `format_line` never includes anything but the documented fields; `last_action` picks the newest line for the id
+- [x] `mise run check` passes
 
 ### Task 9: agtermctl wrapper and the park sequence
 

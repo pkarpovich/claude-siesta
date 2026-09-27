@@ -120,9 +120,13 @@ pub fn find_transcript(paths: &Paths, profile: Profile, conv: &ConvId) -> Option
 }
 
 pub fn read_tail(path: &Path) -> io::Result<(Vec<u8>, TailStart)> {
+    read_last_bytes(path, TAIL_BYTES)
+}
+
+pub fn read_last_bytes(path: &Path, limit: u64) -> io::Result<(Vec<u8>, TailStart)> {
     let mut file = File::open(path)?;
     let len = file.metadata()?.len();
-    let offset = len.saturating_sub(TAIL_BYTES);
+    let offset = len.saturating_sub(limit);
     file.seek(SeekFrom::Start(offset))?;
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)?;

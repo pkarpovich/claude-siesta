@@ -118,7 +118,7 @@ fn days_from_civil(year: u32, month: u32, day: u32) -> i64 {
     era * 146_097 + day_of_era - 719_468
 }
 
-pub fn format_local_minute(time: SystemTime) -> String {
+fn local_tm(time: SystemTime) -> Option<libc::tm> {
     let seconds = match time.duration_since(SystemTime::UNIX_EPOCH) {
         Ok(elapsed) => elapsed.as_secs() as libc::time_t,
         Err(error) => -(error.duration().as_secs() as libc::time_t),
@@ -126,8 +126,15 @@ pub fn format_local_minute(time: SystemTime) -> String {
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     let result = unsafe { libc::localtime_r(&seconds, &mut tm) };
     if result.is_null() {
-        return String::from("-");
+        return None;
     }
+    Some(tm)
+}
+
+pub fn format_local_minute(time: SystemTime) -> String {
+    let Some(tm) = local_tm(time) else {
+        return String::from("-");
+    };
     format!(
         "{:04}-{:02}-{:02} {:02}:{:02}",
         tm.tm_year + 1900,
@@ -136,6 +143,40 @@ pub fn format_local_minute(time: SystemTime) -> String {
         tm.tm_hour,
         tm.tm_min
     )
+}
+
+pub fn format_local_rfc3339(time: SystemTime) -> String {
+    let Some(tm) = local_tm(time) else {
+        return String::from("-");
+    };
+    let offset = tm.tm_gmtoff;
+    let sign = match offset < 0 {
+        true => '-',
+        false => '+',
+    };
+    let offset = offset.unsigned_abs();
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}{sign}{:02}:{:02}",
+        tm.tm_year + 1900,
+        tm.tm_mon + 1,
+        tm.tm_mday,
+        tm.tm_hour,
+        tm.tm_min,
+        tm.tm_sec,
+        offset / 3600,
+        offset % 3600 / 60
+    )
+}
+
+pub fn unix_seconds(time: SystemTime) -> u64 {
+    match time.duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(elapsed) => elapsed.as_secs(),
+        Err(_) => 0,
+    }
+}
+
+pub fn from_unix_seconds(seconds: u64) -> SystemTime {
+    SystemTime::UNIX_EPOCH + Duration::from_secs(seconds)
 }
 
 pub fn format_idle(idle: Duration) -> String {
@@ -224,6 +265,24 @@ mod tests {
         assert_eq!(bytes[13], b':');
         assert!(text.starts_with("2026-09-2"), "{text}");
         assert_ne!(format_local_minute(at(1790500000 + 60)), text);
+    }
+
+    #[test]
+    fn local_rfc3339_round_trips() {
+        let time = at(1790500000);
+        let text = format_local_rfc3339(time);
+        assert_eq!(text.len(), 25, "{text}");
+        assert_eq!(parse_rfc3339(&text), Some(time));
+    }
+
+    #[test]
+    fn unix_seconds_round_trip() {
+        assert_eq!(unix_seconds(from_unix_seconds(1790500000)), 1790500000);
+        assert_eq!(unix_seconds(at(5) + Duration::from_millis(900)), 5);
+        assert_eq!(
+            unix_seconds(SystemTime::UNIX_EPOCH - Duration::from_secs(1)),
+            0
+        );
     }
 
     #[test]
