@@ -7,6 +7,7 @@ use claude_siesta::config::Config;
 use claude_siesta::daemon;
 use claude_siesta::park::{self, FOREGROUND_POLL, ParkEnv, ParkOutcome, SystemProcesses};
 use claude_siesta::paths::Paths;
+use claude_siesta::placeholder;
 use claude_siesta::rule::Mode;
 
 fn main() -> ExitCode {
@@ -23,7 +24,7 @@ fn main() -> ExitCode {
         }
     };
     match command {
-        Command::Placeholder => not_implemented("placeholder"),
+        Command::Placeholder => run_placeholder(),
         Command::Daemon => run_daemon(),
         Command::Park(query) => park_now(query),
         Command::Resume(_) => not_implemented("resume"),
@@ -43,6 +44,14 @@ fn setup() -> Result<(Paths, Config), ExitCode> {
             Err(ExitCode::from(2))
         }
     }
+}
+
+fn run_placeholder() -> ExitCode {
+    let Some(paths) = Paths::from_env() else {
+        eprintln!("claude-siesta: HOME is not set");
+        return ExitCode::from(1);
+    };
+    placeholder::run(&paths)
 }
 
 fn run_daemon() -> ExitCode {

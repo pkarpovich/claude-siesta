@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::ccmap::{Profile, SessionId};
 
@@ -18,6 +18,10 @@ impl Paths {
             return None;
         }
         Some(Paths::from_home(PathBuf::from(home)))
+    }
+
+    pub fn home(&self) -> &Path {
+        &self.home
     }
 
     pub fn cc_map_dir(&self) -> PathBuf {

@@ -368,11 +368,11 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Modify: `src/main.rs`
 - Modify: `src/lib.rs`
 
-- [ ] `src/placeholder/view.rs`: a pure `render(frame, &ViewModel)` and `ViewModel { name, cwd_display, conv_short, idle, parked_at: Option<String>, excerpt: Vec<String> }` per Technical Details / Placeholder / Screen, including the small-pane fallback; `excerpt_lines(text, width, max_lines)` wrapping on char boundaries (multi-byte safe)
-- [ ] `src/placeholder.rs`: start checks and messages, data gathering, terminal setup and a guard that restores the terminal on drop and in a panic hook, the event loop (1 s poll, minute redraw, resize), SIGUSR1 flag, key and mouse handling, `q`/`Esc` exit, the resume `exec` with the environment from Technical Details / Placeholder / Resume; write `placeholder_pid` into the state file on start
-- [ ] apply whatever `docs/spike-results.md` found (Task 2)
-- [ ] write tests: `render` into a ratatui `TestBackend` for a normal and a tiny pane (assert the title, idle and footer text are present, the excerpt is cut at 10 lines), `excerpt_lines` with Cyrillic text and long words, a pure `resume_command(&MapEntry, &Paths) -> (program, args, env)` for both profiles, key/mouse -> action mapping as a pure function
-- [ ] `mise run check` passes
+- [x] `src/placeholder/view.rs`: a pure `render(frame, &ViewModel)` and `ViewModel { name, cwd_display, conv_short, idle, parked_at: Option<String>, excerpt: String }` per Technical Details / Placeholder / Screen, including the small-pane fallback; `excerpt_lines(text, width, max_lines)` wrapping on char boundaries (multi-byte safe) (`excerpt` holds the raw text and `render` wraps it to the block's inner width, since the width is only known at draw time; a pane too short for 10 excerpt lines shows fewer before falling back to title + footer)
+- [x] `src/placeholder.rs`: start checks and messages, data gathering, terminal setup and a guard that restores the terminal on drop and in a panic hook, the event loop (1 s poll, minute redraw, resize), SIGUSR1 flag, key and mouse handling, `q`/`Esc` exit, the resume `exec` with the environment from Technical Details / Placeholder / Resume; write `placeholder_pid` into the state file on start (the exec also runs in the cc-map `cwd` when it is an existing dir, so `--resume` finds the project; the placeholder does not load `config.toml`, so a broken config never blocks a resume)
+- [x] apply whatever `docs/spike-results.md` found (Task 2) (restore order `DisableMouseCapture`, `LeaveAlternateScreen`, then raw mode off, plus a cursor `Show`)
+- [x] write tests: `render` into a ratatui `TestBackend` for a normal and a tiny pane (assert the title, idle and footer text are present, the excerpt is cut at 10 lines), `excerpt_lines` with Cyrillic text and long words, a pure `resume_command(&MapEntry, &Paths) -> (program, args, env)` for both profiles, key/mouse -> action mapping as a pure function
+- [x] `mise run check` passes
 
 ### Task 12: resume and status subcommands
 

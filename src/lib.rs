@@ -6,6 +6,7 @@ pub mod daemon;
 pub mod log;
 pub mod park;
 pub mod paths;
+pub mod placeholder;
 pub mod rule;
 pub mod state;
 pub mod time;
