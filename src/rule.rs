@@ -20,6 +20,20 @@ pub enum SkipReason {
     NotIdleEnough,
 }
 
+impl SkipReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SkipReason::NotClaude => "not-claude",
+            SkipReason::NotMapped => "not-mapped",
+            SkipReason::PidNotClaude => "pid-not-claude",
+            SkipReason::AgentWorking => "agent-working",
+            SkipReason::Flagged => "flagged",
+            SkipReason::Selected => "selected",
+            SkipReason::NotIdleEnough => "not-idle-enough",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
     Park,
