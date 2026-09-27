@@ -261,18 +261,19 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 **Files:**
 - Create: `src/paths.rs`
 - Create: `src/config.rs`
+- Create: `src/ccmap.rs` (only `SessionId` and `Profile`, which `Paths` needs; Task 4 adds the rest)
 - Modify: `src/lib.rs`
 
-- [ ] `src/paths.rs`: a `Paths` struct built from a home directory (`Paths::from_home(PathBuf)`, plus `Paths::from_env()` reading `HOME`) exposing the cc-map dir, the transcript root for a `Profile`, the state dir, the state file for a `SessionId`, the log file and the config file, all from the External contracts / Technical Details sections
-- [ ] `src/config.rs`: `Config { park_after: Duration, poll_interval: Duration }` with defaults 2 h / 10 m; `Config::parse(&str) -> Result<Config, ConfigError>` via `toml` + serde with `deny_unknown_fields`; `Config::load(&Paths)` returns defaults when the file is absent and an error when it is invalid; a `parse_duration(&str)` for `<int><s|m|h|d>`
-- [ ] write tests: defaults for an empty file, both keys set, each unit, invalid unit, zero, negative/garbage, unknown key rejected
-- [ ] write tests for `Paths` with a fake home: every path is under it; `work` maps to `.claude-work`
-- [ ] `mise run check` passes
+- [x] `src/paths.rs`: a `Paths` struct built from a home directory (`Paths::from_home(PathBuf)`, plus `Paths::from_env()` reading `HOME`) exposing the cc-map dir, the transcript root for a `Profile`, the state dir, the state file for a `SessionId`, the log file and the config file, all from the External contracts / Technical Details sections
+- [x] `src/config.rs`: `Config { park_after: Duration, poll_interval: Duration }` with defaults 2 h / 10 m; `Config::parse(&str) -> Result<Config, ConfigError>` via `toml` + serde with `deny_unknown_fields`; `Config::load(&Paths)` returns defaults when the file is absent and an error when it is invalid; a `parse_duration(&str)` for `<int><s|m|h|d>`
+- [x] write tests: defaults for an empty file, both keys set, each unit, invalid unit, zero, negative/garbage, unknown key rejected
+- [x] write tests for `Paths` with a fake home: every path is under it; `work` maps to `.claude-work`
+- [x] `mise run check` passes
 
 ### Task 4: cc-map entries
 
 **Files:**
-- Create: `src/ccmap.rs`
+- Modify: `src/ccmap.rs` (Task 3 created it with `SessionId` and `Profile`)
 - Modify: `src/lib.rs`
 
 - [ ] newtypes `SessionId` (normalized to uppercase), `ConvId`; enum `Profile { Personal, Work }` (unknown profile string -> `Personal`)
