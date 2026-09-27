@@ -233,13 +233,14 @@ One row per session in any open window that has a cc-map entry: session name (tr
 - Create: `Cargo.toml`
 - Create: `src/lib.rs`
 - Create: `src/main.rs`
+- Create: `src/cli.rs`
 - Create: `.gitignore`
 
-- [ ] `mise.toml`: `rust = { version = "1.98.1", components = "rustfmt,clippy" }`, tasks `build`, `test`, `lint` (`cargo clippy --all-targets -- -D warnings`), `fmt`, `check` (fmt check, clippy, test) in that order
-- [ ] `Cargo.toml`: package `claude-siesta`, edition 2024, `rust-version = "1.98"`, dependencies `ratatui = "0.30.2"`, `crossterm = "0.29"`, `serde = { version = "1", features = ["derive"] }`, `serde_json = "1"`, `toml = "1.1"`, `nix = { version = "0.31", features = ["signal", "process"] }`; `[profile.release]` with `strip = true`, `lto = true`, `opt-level = "s"` for a small binary
-- [ ] `src/main.rs` with the argument dispatch from Technical Details / CLI, every subcommand a stub returning exit 1 with "not implemented"; `.gitignore` with `/target`
-- [ ] write a test for argument dispatch (a pure `parse_args(&[String]) -> Result<Command, UsageError>` in the lib): each subcommand, a missing `<id|prefix>`, an unknown subcommand
-- [ ] `mise run check` passes
+- [x] `mise.toml`: `rust = { version = "1.98.1", components = "rustfmt,clippy" }`, tasks `build`, `test`, `lint` (`cargo clippy --all-targets -- -D warnings`), `fmt`, `check` (fmt check, clippy, test) in that order
+- [x] `Cargo.toml`: package `claude-siesta`, edition 2024, `rust-version = "1.98"`, dependencies `ratatui = "0.30.2"`, `crossterm = "0.29"`, `serde = { version = "1", features = ["derive"] }`, `serde_json = "1"`, `toml = "1.1"`, `nix = { version = "0.31", features = ["signal", "process"] }`; `[profile.release]` with `strip = true`, `lto = true`, `opt-level = "s"` for a small binary
+- [x] `src/main.rs` with the argument dispatch from Technical Details / CLI, every subcommand a stub returning exit 1 with "not implemented"; `.gitignore` with `/target`
+- [x] write a test for argument dispatch (a pure `parse_args(&[String]) -> Result<Command, UsageError>` in the lib, `src/cli.rs`; an extra argument is also a usage error): each subcommand, a missing `<id|prefix>`, an unknown subcommand
+- [x] `mise run check` passes
 
 ### Task 2: Spike the three unverified runtime behaviours inside agterm
 
