@@ -4,3 +4,4 @@ pub mod config;
 pub mod paths;
 pub mod time;
 pub mod transcript;
+pub mod tree;

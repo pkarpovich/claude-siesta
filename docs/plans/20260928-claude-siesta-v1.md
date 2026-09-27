@@ -303,12 +303,12 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Create: `tests/fixtures/tree.json`
 - Modify: `src/lib.rs`
 
-- [ ] `WindowId` newtype; `Window { id, open }`; `Session { id: SessionId, name, active, flagged, foreground: Vec<String>, status: AgentStatus, restore_command: Option<String> }` with `AgentStatus { Idle, Active, Completed, Blocked }` (absent -> `Idle`, unknown string -> `Idle`); serde with defaults so unknown and missing fields never fail
-- [ ] `parse_windows(&str) -> Result<Vec<Window>, TreeError>` and `parse_tree(&str) -> Result<Vec<Session>, TreeError>` flattening `result.tree.workspaces[].sessions[]`; `ok: false` in the response is an error carrying the response's message
-- [ ] `Session::runs_claude()` (`foreground[0]` ends with `/claude`) and `Session::runs_placeholder()` (ends with `claude-siesta`)
-- [ ] fixtures: a trimmed real `window list` response and a `tree` response with one live claude session, one at a shell prompt (no `foreground`), one flagged, one selected, one `status: active`, one running `claude-siesta`, one with `foreground` of `vim`, plus an extra unknown field on each
-- [ ] write tests over the fixtures: count, each field, `runs_claude`/`runs_placeholder`, `ok: false` error, malformed JSON error
-- [ ] `mise run check` passes
+- [x] `WindowId` newtype; `Window { id, open }`; `Session { id: SessionId, name, active, flagged, foreground: Vec<String>, status: AgentStatus, restore_command: Option<String> }` with `AgentStatus { Idle, Active, Completed, Blocked }` (absent -> `Idle`, unknown string -> `Idle`); serde with defaults so unknown and missing fields never fail
+- [x] `parse_windows(&str) -> Result<Vec<Window>, TreeError>` and `parse_tree(&str) -> Result<Vec<Session>, TreeError>` flattening `result.tree.workspaces[].sessions[]`; `ok: false` in the response is an error carrying the response's message
+- [x] `Session::runs_claude()` (`foreground[0]` ends with `/claude`) and `Session::runs_placeholder()` (ends with `claude-siesta`)
+- [x] fixtures: a trimmed real `window list` response and a `tree` response with one live claude session, one at a shell prompt (no `foreground`), one flagged, one selected, one `status: active`, one running `claude-siesta`, one with `foreground` of `vim`, plus an extra unknown field on each
+- [x] write tests over the fixtures: count, each field, `runs_claude`/`runs_placeholder`, `ok: false` error, malformed JSON error
+- [x] `mise run check` passes
 
 ### Task 7: Park rule
 
