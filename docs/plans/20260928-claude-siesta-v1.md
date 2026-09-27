@@ -250,11 +250,11 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Create: `examples/spike.rs`
 - Create: `docs/spike-results.md`
 
-- [ ] `examples/spike.rs`: a minimal ratatui screen with raw mode, alternate screen and mouse capture; prints the last event it received; SIGUSR1 handler setting an atomic flag; on Enter, SIGUSR1 or a click it restores the terminal and `exec`s a program given as argv (e.g. `claude --resume <conv>` of a throwaway conversation, or `bash -c 'echo exec-ok; sleep 5'`)
-- [ ] run it in an agterm pane and record in `docs/spike-results.md`: does a mouse click arrive as a crossterm mouse down event; does `kill -USR1 <pid>` from another shell resume; after `exec` into claude, is the terminal clean (no mouse escape garbage, no alternate-screen leftovers) and does agterm's `tree --json` report the new `foreground` argv; does the pane return to the fish prompt when the exec'd program exits
-- [ ] measure the spike's RSS with `ps -o rss= -p <pid>` and record it
-- [ ] if any of the four behaviours fails, add a ⚠️ note here with the observed behaviour and adjust Task 11 before continuing
-- [ ] `mise run check` passes (the example must build and lint clean)
+- [x] `examples/spike.rs`: a minimal ratatui screen with raw mode, alternate screen and mouse capture; prints the last event it received; SIGUSR1 handler setting an atomic flag; on Enter, SIGUSR1 or a click it restores the terminal and `exec`s a program given as argv (e.g. `claude --resume <conv>` of a throwaway conversation, or `bash -c 'echo exec-ok; sleep 5'`)
+- [x] run it in an agterm pane and record in `docs/spike-results.md`: does a mouse click arrive as a crossterm mouse down event; does `kill -USR1 <pid>` from another shell resume; after `exec` into claude, is the terminal clean (no mouse escape garbage, no alternate-screen leftovers) and does agterm's `tree --json` report the new `foreground` argv; does the pane return to the fish prompt when the exec'd program exits (run in a throwaway background session driven by agtermctl; the mouse check used an SGR click injected with `session type`, and a physical GUI click is left to the Post-Completion manual check)
+- [x] measure the spike's RSS with `ps -o rss= -p <pid>` and record it (2944 KB, release build)
+- [x] if any of the four behaviours fails, add a ⚠️ note here with the observed behaviour and adjust Task 11 before continuing (none failed; a claude exec'd by bare name still reports an absolute `foreground[0]`, so rule check 1 holds)
+- [x] `mise run check` passes (the example must build and lint clean)
 
 ### Task 3: Paths, config and duration parsing
 
