@@ -155,7 +155,7 @@ Written by `park`; the placeholder sets `placeholder_pid` to its own pid on star
 
 ### Log
 
-`$HOME/.local/state/claude-siesta/claude-siesta.log`, append-only, one line per decision: RFC 3339 local time, action (`park`, `skip`, `park-failed`, `cleanup`), session id, conv id, idle in minutes, reason. Never any transcript text, never the cwd. `skip` lines are logged only for sessions whose foreground is claude (so the log is not 30 lines of "shell prompt" every tick). No rotation in v1.
+`$HOME/.local/state/claude-siesta/claude-siesta.log`, append-only, one line per decision: RFC 3339 local time, action (`start`, `park`, `skip`, `park-failed`, `cleanup`, `tick-failed`), session id, conv id, idle in minutes, reason. Never any transcript text, never the cwd. `skip` lines are logged only for sessions whose foreground is claude (so the log is not 30 lines of "shell prompt" every tick). No rotation in v1.
 
 ### Park rule (`rule::decide`)
 
@@ -354,11 +354,11 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Modify: `src/main.rs`
 - Modify: `src/lib.rs`
 
-- [ ] `src/daemon.rs`: `run(&Paths, Config) -> ExitCode` per Technical Details / Daemon: start log line, tick, cleanup of state files, interruptible sleep; SIGTERM/SIGINT set an atomic flag checked every second
-- [ ] `tick(&ParkEnv) -> TickReport` (parked / skipped / failed counts) separate from the loop so it is callable from a test with the fake `AgtermOps`
-- [ ] wire `claude-siesta daemon` and `claude-siesta park <id|prefix>` (Manual mode, prints the outcome, exit 0 on park, 1 otherwise) in `src/main.rs`
-- [ ] write tests for `tick` with the fake: two windows, one parkable session and several skip cases -> exactly one park, state files of vanished sessions removed, an agterm failure ends the tick without panicking
-- [ ] `mise run check` passes
+- [x] `src/daemon.rs`: `run(&Paths, Config) -> ExitCode` per Technical Details / Daemon: start log line, tick, cleanup of state files, interruptible sleep; SIGTERM/SIGINT set an atomic flag checked every second
+- [x] `tick(&ParkEnv) -> TickReport` (parked / skipped / failed counts, plus the agterm error when the tick ended early) separate from the loop so it is callable from a test with the fake `AgtermOps`; the one log line for a failed tick uses a new `Action::TickFailed` (`tick-failed`)
+- [x] wire `claude-siesta daemon` and `claude-siesta park <id|prefix>` (Manual mode, prints the outcome, exit 0 on park, 1 otherwise) in `src/main.rs`
+- [x] write tests for `tick` with the fake: two windows, one parkable session and several skip cases -> exactly one park, state files of vanished sessions removed, an agterm failure ends the tick without panicking
+- [x] `mise run check` passes
 
 ### Task 11: Placeholder TUI
 

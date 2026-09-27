@@ -17,6 +17,7 @@ pub enum Action {
     Skip,
     ParkFailed,
     Cleanup,
+    TickFailed,
 }
 
 impl Action {
@@ -27,6 +28,7 @@ impl Action {
             Action::Skip => "skip",
             Action::ParkFailed => "park-failed",
             Action::Cleanup => "cleanup",
+            Action::TickFailed => "tick-failed",
         }
     }
 }
@@ -145,6 +147,7 @@ mod tests {
         assert_eq!(Action::Skip.as_str(), "skip");
         assert_eq!(Action::ParkFailed.as_str(), "park-failed");
         assert_eq!(Action::Cleanup.as_str(), "cleanup");
+        assert_eq!(Action::TickFailed.as_str(), "tick-failed");
     }
 
     #[test]

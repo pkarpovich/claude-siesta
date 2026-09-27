@@ -2,6 +2,7 @@ pub mod agterm;
 pub mod ccmap;
 pub mod cli;
 pub mod config;
+pub mod daemon;
 pub mod log;
 pub mod park;
 pub mod paths;

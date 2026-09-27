@@ -131,7 +131,7 @@ pub struct ParkFailure {
 }
 
 impl ParkFailure {
-    fn reason(&self) -> String {
+    pub fn reason(&self) -> String {
         let ParkFailure { step, detail } = self;
         match detail {
             Some(detail) => format!("{}: {}", step.as_str(), first_line(detail)),
@@ -316,7 +316,7 @@ fn first_line(text: &str) -> &str {
     text.lines().next().unwrap_or_default()
 }
 
-fn write_log(paths: &Paths, line: &LogLine) {
+pub fn write_log(paths: &Paths, line: &LogLine) {
     if let Err(error) = log::append(paths, line) {
         eprintln!("claude-siesta: cannot write log: {error}");
     }
