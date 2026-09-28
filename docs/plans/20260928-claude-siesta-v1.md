@@ -394,10 +394,10 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Create: `launchd/dev.pkarpovich.claude-siesta.plist`
 - Modify: `mise.toml`
 
-- [ ] plist template per Technical Details / launchd with a `__HOME__` placeholder
-- [ ] mise tasks `install` and `uninstall` per Technical Details / launchd; `install` is idempotent (bootout of a loaded agent first)
-- [ ] validate the template with `plutil -lint` after substitution into a temp path inside `target/` (add this as part of the `check` task)
-- [ ] `mise run check` passes
+- [x] plist template per Technical Details / launchd with a `__HOME__` placeholder
+- [x] mise tasks `install` and `uninstall` per Technical Details / launchd; `install` is idempotent (bootout of a loaded agent first) (the binary is copied to a temp name and renamed into place so running placeholders keep their inode; install/uninstall are not run here, that is Post-Completion)
+- [x] validate the template with `plutil -lint` after substitution into a temp path inside `target/` (add this as part of the `check` task) (a `lint-plist` task, called as the last step of `check`; a broken template fails it)
+- [x] `mise run check` passes
 
 ### Task 14: Verify acceptance criteria
 
