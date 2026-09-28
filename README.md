@@ -36,6 +36,8 @@ claude-siesta daemon               the poll loop (what launchd runs)
 claude-siesta park <id|prefix>     park one session now
 claude-siesta resume <id|prefix>   resume one parked session from another shell
 claude-siesta status               one row per mapped session: name, conv, idle, state, last log action
+claude-siesta install              write and load the launchd agent for this binary
+claude-siesta uninstall            unload the agent and remove its plist
 ```
 
 `<id|prefix>` is matched case-insensitively against the start of the session ids in every open agterm window; zero or several matches is an error that names the candidates. A usage error exits 2, any other failure exits 1.
@@ -56,7 +58,7 @@ poll_interval = "10m"
 - `park_after` (default `2h`): how long a claude must be idle before the daemon parks it.
 - `poll_interval` (default `10m`): how often the daemon looks at agterm.
 
-A duration is a positive integer followed by `s`, `m`, `h` or `d`. An invalid value or an unknown key stops the daemon and `park` with an error that names the key (exit 2); it is never replaced by a silent default. Under launchd a broken config makes the daemon exit and restart every 30 s, with the error in `$HOME/Library/Logs/claude-siesta.err.log`. The placeholder never reads the config, so a broken file never blocks a resume.
+A duration is a positive integer followed by `s`, `m`, `h` or `d`. An invalid value or an unknown key stops the daemon and `park` with an error that names the key (exit 2); it is never replaced by a silent default. Under launchd a broken config makes the daemon exit and restart every 30 s, with the error in `$HOME/Library/Logs/claude-siesta/claude-siesta.err.log`. The placeholder never reads the config, so a broken file never blocks a resume.
 
 ## Files
 
@@ -72,8 +74,9 @@ Written:
 - `$HOME/.local/state/claude-siesta/<SESSION-ID>.json`: one state file per parked session (session, conv, profile, when it was parked, when claude last answered, the placeholder's pid). The placeholder deletes it on resume; the daemon deletes the files of sessions that are in no open agterm window, so a parked session in a closed window loses its file (Enter in its pane still resumes it, `claude-siesta resume` from another shell no longer finds it).
 - `$HOME/.local/state/claude-siesta/<SESSION-ID>.resumed`: the unix time the placeholder last resumed the session, written right before the `exec`. Idle is never measured from before it. The daemon deletes it with the state files of sessions that are in no open agterm window.
 - `$HOME/.local/state/claude-siesta/park.lock`: an empty file locked with `flock` from the recheck before the kill through the typed placeholder, and around the daemon's state-file cleanup, so a manual `park` and a daemon tick never park the same session twice or delete each other's state.
-- `$HOME/.local/state/claude-siesta/claude-siesta.log`: one line per decision (time, action, session, conv, idle minutes, reason). The actions are `start`, `park`, `skip`, `park-failed`, `cleanup` and `tick-failed`; `skip` is logged only for sessions running claude, with one of the reasons `not-claude`, `not-mapped`, `pid-not-claude`, `agent-working`, `flagged`, `selected` or `not-idle-enough`. It never contains transcript text or paths, and it is not rotated.
-- `$HOME/Library/Logs/claude-siesta.err.log`: the daemon's stderr, written by launchd.
+- `$HOME/.local/state/claude-siesta/claude-siesta.log`: one line per decision (time, action, session, conv, idle minutes, reason). The actions are `start`, `park`, `skip`, `park-failed`, `cleanup`, `tick-failed` and `retire` (the daemon's binary was replaced, launchd starts the new one); `skip` is logged only for sessions running claude, with one of the reasons `not-claude`, `not-mapped`, `pid-not-claude`, `agent-working`, `flagged`, `selected` or `not-idle-enough`. It never contains transcript text or paths, and it is not rotated.
+- `$HOME/Library/Logs/claude-siesta/claude-siesta.log` and `claude-siesta.err.log`: the daemon's stdout and stderr, written by launchd.
+- `$HOME/Library/LaunchAgents/dev.pkarpovich.claude-siesta.plist`: the agent `claude-siesta install` writes.
 
 ## Dependency on the cc-map hooks
 
@@ -82,16 +85,19 @@ claude-siesta knows which conversation runs in which session only through cc-map
 ## Install
 
 ```
-mise run install
+brew install --cask pkarpovich/apps/claude-siesta
+claude-siesta install
 ```
 
-Builds the release binary, copies it to `$HOME/.local/bin/claude-siesta` (through a temporary name and a rename, so placeholders already running keep their binary), renders `launchd/dev.pkarpovich.claude-siesta.plist` into `$HOME/Library/LaunchAgents/` and (re)loads the agent `dev.pkarpovich.claude-siesta`. Running it again upgrades in place. `$HOME/.local/bin` must be on the interactive fish PATH, because agterm types the pinned `claude-siesta` restore line into a login fish.
+The cask installs a signed and notarized binary. `claude-siesta install` writes the launchd agent `dev.pkarpovich.claude-siesta` and loads it; run it once. The agent names the binary by the path it was started from (`/opt/homebrew/bin/claude-siesta`), not the versioned directory behind that link, and keeps the daemon alive only while that path exists. An upgrade needs nothing else: the daemon notices the file behind the path changed, logs `retire` and exits, and launchd starts the new version.
 
-```
-mise run uninstall
-```
+`claude-siesta uninstall` unloads the agent and removes its plist. The binary, the state files and the logs stay.
 
-Unloads the agent and removes its plist. The binary, the state files and the log stay.
+From a checkout, `mise run install` builds the release binary, copies it to `$HOME/.local/bin/claude-siesta` (through a temporary name and a rename, so placeholders already running keep their binary) and runs `claude-siesta install` from there; `mise run uninstall` unloads it. Whichever binary ran `install` is the one the agent starts. The directory holding it must be on the interactive fish PATH, because agterm types the pinned `claude-siesta` restore line into a login fish.
+
+## Release
+
+Pushing a tag `v<version>` that matches `Cargo.toml` runs `.github/workflows/release.yml`: `mise run check`, an arm64 build signed with the Developer ID and the hardened runtime, notarization (`notarytool` must answer `Accepted`; a bare binary cannot be stapled), a GitHub release with the zip and checksums, and the cask written into `pkarpovich/homebrew-apps`.
 
 ## Build
 
@@ -99,4 +105,4 @@ Unloads the agent and removes its plist. The binary, the state files and the log
 mise run check
 ```
 
-Runs `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` and `plutil -lint` over the rendered plist. macOS only.
+Runs `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`, which includes `plutil -lint` over the generated agent. macOS only. CI runs the same on every pull request.

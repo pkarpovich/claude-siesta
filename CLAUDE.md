@@ -30,6 +30,10 @@ The placeholder enables raw mode, the alternate screen and mouse capture. A leak
 
 The placeholder must never fail to resume because of something optional: a missing state file, an agtermctl failure (fall back to the cwd basename for the name) or a broken `config.toml` (it is never read) do not stop it.
 
+## The agent names the binary as it was invoked
+
+`service::install` writes `current_exe()` into the plist unresolved, and `executable::Executable` keeps that same path. Never `canonicalize` it: the cask links `bin/claude-siesta` into `Caskroom/claude-siesta/<version>/`, which the next upgrade deletes, so a resolved path would leave the agent pointing at nothing. The upgrade is detected by the device and inode of the file the path resolves to; a change makes the daemon log `retire` and exit, and the `PathState` KeepAlive starts the new binary.
+
 ## Tests live inline
 
 Tests go in a `#[cfg(test)] mod tests` block in the file they cover. A sibling `foo_test.rs` is not compiled unless something declares it, so it would sit unbuilt while the gate reported success. Fixtures that mirror agterm's real responses are in `tests/fixtures/`, with fake homes under `/home/x`: no path in `src/` names a real user home.
@@ -48,7 +52,7 @@ mise run check
 ! grep -rn 'matches!' src/
 ```
 
-`mise run check` is `cargo fmt --all -- --check`, then `cargo clippy --all-targets -- -D warnings`, then `cargo test`, then `plutil -lint` over the rendered launchd plist.
+`mise run check` is `cargo fmt --all -- --check`, then `cargo clippy --all-targets -- -D warnings`, then `cargo test`; the plist test in `src/service.rs` runs `plutil -lint` over the generated agent.
 
 ## Style
 
