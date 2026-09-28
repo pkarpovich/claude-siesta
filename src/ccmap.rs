@@ -113,11 +113,14 @@ impl MapEntry {
             Some(profile) => Profile::parse(&profile),
             None => Profile::Personal,
         };
+        let Some(ts) = SystemTime::UNIX_EPOCH.checked_add(Duration::from_secs(ts)) else {
+            return Err(CcMapError::Syntax(format!("ts out of range: {ts}")));
+        };
         Ok(MapEntry {
             conv: ConvId::new(&conv),
             profile,
             cwd: cwd.unwrap_or_default(),
-            ts: SystemTime::UNIX_EPOCH + Duration::from_secs(ts),
+            ts,
             pid,
         })
     }
@@ -241,6 +244,14 @@ mod tests {
         let error = MapEntry::parse(r#"{"conv":"","ts":1790419180}"#).unwrap_err();
         let CcMapError::MissingConv = error else {
             panic!("unexpected error: {error}");
+        };
+    }
+
+    #[test]
+    fn out_of_range_ts_is_error() {
+        let error = MapEntry::parse(r#"{"conv":"c","ts":18446744073709551615}"#).unwrap_err();
+        let CcMapError::Syntax(_) = error else {
+            panic!("expected a syntax error, got {error}");
         };
     }
 

@@ -136,6 +136,8 @@ struct WireSession {
     #[serde(default)]
     split: bool,
     #[serde(default)]
+    has_split: bool,
+    #[serde(default)]
     foreground: Vec<String>,
     status: Option<String>,
     restore_command: Option<String>,
@@ -182,6 +184,7 @@ pub fn parse_tree(text: &str) -> Result<Vec<Session>, TreeError> {
             active,
             flagged,
             split,
+            has_split,
             foreground,
             status,
             restore_command,
@@ -192,7 +195,7 @@ pub fn parse_tree(text: &str) -> Result<Vec<Session>, TreeError> {
                 name,
                 active,
                 flagged,
-                split,
+                split: split || has_split,
                 foreground,
                 status: AgentStatus::parse(status.as_deref()),
                 restore_command,
@@ -358,6 +361,15 @@ mod tests {
     fn split_session_is_marked_split() {
         let sessions = parse_tree(
             r#"{"ok":true,"result":{"tree":{"workspaces":[{"sessions":[{"id":"a","split":true,"foreground":["/usr/bin/claude"]}]}]}}}"#,
+        )
+        .unwrap();
+        assert!(sessions[0].split);
+    }
+
+    #[test]
+    fn hidden_split_session_is_marked_split() {
+        let sessions = parse_tree(
+            r#"{"ok":true,"result":{"tree":{"workspaces":[{"sessions":[{"id":"a","split":false,"hasSplit":true,"foreground":["/usr/bin/claude"]}]}]}}}"#,
         )
         .unwrap();
         assert!(sessions[0].split);
