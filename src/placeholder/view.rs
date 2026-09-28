@@ -155,7 +155,7 @@ mod tests {
             name: "siesta work".to_string(),
             cwd_display: "~/Projects/claude-siesta".to_string(),
             conv_short: "c0acdbe6".to_string(),
-            idle: "26h 12m".to_string(),
+            idle: "1d 2h".to_string(),
             parked_at: Some("2026-09-27 12:40".to_string()),
             excerpt: excerpt.to_string(),
         }
@@ -200,7 +200,7 @@ mod tests {
         assert!(contains(&rows, "~/Projects/claude-siesta"));
         assert!(contains(
             &rows,
-            "conv c0acdbe6   idle 26h 12m   parked 2026-09-27 12:40"
+            "conv c0acdbe6   idle 1d 2h   parked 2026-09-27 12:40"
         ));
         assert!(contains(&rows, "The fix is in."));
         assert!(contains(&rows, "Next: tests."));
@@ -214,7 +214,7 @@ mod tests {
             ..model("hello")
         };
         let rows = screen(&model, 100, 30);
-        assert!(contains(&rows, "conv c0acdbe6   idle 26h 12m"));
+        assert!(contains(&rows, "conv c0acdbe6   idle 1d 2h"));
         assert!(!contains(&rows, "parked"));
     }
 
@@ -233,7 +233,7 @@ mod tests {
         assert!(contains(&rows, "line01"));
         assert!(contains(&rows, "line04"));
         assert!(!contains(&rows, "line05"));
-        assert!(contains(&rows, "idle 26h 12m"));
+        assert!(contains(&rows, "idle 1d 2h"));
         assert!(contains(&rows, FOOTER));
     }
 
