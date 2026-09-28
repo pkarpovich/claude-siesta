@@ -138,7 +138,7 @@ impl MapEntry {
 mod tests {
     use super::*;
 
-    const FULL: &str = r#"{"conv":"b1274f92-3c1d-4e2a-9f00-1234567890ab","profile":"personal","cwd":"/Users/x/Projects/y","ts":1790419180,"pid":68237}"#;
+    const FULL: &str = r#"{"conv":"b1274f92-3c1d-4e2a-9f00-1234567890ab","profile":"personal","cwd":"/home/x/Projects/y","ts":1790419180,"pid":68237}"#;
 
     fn at(seconds: u64) -> SystemTime {
         SystemTime::UNIX_EPOCH + Duration::from_secs(seconds)
@@ -165,7 +165,7 @@ mod tests {
             MapEntry {
                 conv: ConvId::new("b1274f92-3c1d-4e2a-9f00-1234567890ab"),
                 profile: Profile::Personal,
-                cwd: PathBuf::from("/Users/x/Projects/y"),
+                cwd: PathBuf::from("/home/x/Projects/y"),
                 ts: at(1790419180),
                 pid: Some(68237),
             }

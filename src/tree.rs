@@ -250,7 +250,7 @@ mod tests {
                 active: false,
                 flagged: false,
                 foreground: vec![
-                    "/Users/x/.local/bin/claude".to_string(),
+                    "/home/x/.local/bin/claude".to_string(),
                     "--enable-auto-mode".to_string(),
                     "--resume".to_string(),
                     "c0acdbe6-d414-4622-a394-ee560f5b2646".to_string(),

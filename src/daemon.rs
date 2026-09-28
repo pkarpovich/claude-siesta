@@ -179,7 +179,7 @@ mod tests {
     const VANISHED: &str = "70000000-0000-0000-0000-000000000007";
     const NOW: u64 = 1_790_500_000;
     const DAY: u64 = 24 * 60 * 60;
-    const CLAUDE: &str = "/Users/x/.local/bin/claude";
+    const CLAUDE: &str = "/home/x/.local/bin/claude";
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum Failing {
@@ -309,7 +309,7 @@ mod tests {
         std::fs::write(
             dir.join(session),
             format!(
-                r#"{{"conv":"conv-{pid}","profile":"personal","cwd":"/Users/x/y","ts":{ts},"pid":{pid}}}"#
+                r#"{{"conv":"conv-{pid}","profile":"personal","cwd":"/home/x/y","ts":{ts},"pid":{pid}}}"#
             ),
         )
         .unwrap();

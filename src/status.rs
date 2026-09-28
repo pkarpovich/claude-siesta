@@ -200,7 +200,7 @@ mod tests {
         let live = session(
             LIVE,
             "api",
-            &["/Users/x/.local/bin/claude", "--resume", "c0"],
+            &["/home/x/.local/bin/claude", "--resume", "c0"],
         );
         assert_eq!(classify(&live, None), SessionState::Live);
         assert_eq!(classify(&live, Some(&park_state(LIVE))), SessionState::Live);
@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn placeholder_foreground_is_parked() {
-        let parked = session(PARKED, "web", &["/Users/x/.local/bin/claude-siesta"]);
+        let parked = session(PARKED, "web", &["/home/x/.local/bin/claude-siesta"]);
         assert_eq!(classify(&parked, None), SessionState::Parked);
     }
 
@@ -347,7 +347,7 @@ mod tests {
         .unwrap();
         let agterm = FakeAgterm {
             sessions: vec![
-                session(LIVE, "api", &["/Users/x/.local/bin/claude"]),
+                session(LIVE, "api", &["/home/x/.local/bin/claude"]),
                 session(PARKED, "web", &[]),
                 session(UNMAPPED, "notes", &[]),
             ],

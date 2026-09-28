@@ -333,7 +333,7 @@ mod tests {
     const PID: i32 = 68237;
     const MAP_TS: u64 = 1_790_000_000;
     const NOW: u64 = 1_790_500_000;
-    const CLAUDE: &str = "/Users/x/.local/bin/claude";
+    const CLAUDE: &str = "/home/x/.local/bin/claude";
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     enum Call {
@@ -471,7 +471,7 @@ mod tests {
         std::fs::write(
             dir.join(SESSION),
             format!(
-                r#"{{"conv":"{CONV}","profile":"personal","cwd":"/Users/x/Projects/y","ts":{MAP_TS},"pid":{PID}}}"#
+                r#"{{"conv":"{CONV}","profile":"personal","cwd":"/home/x/Projects/y","ts":{MAP_TS},"pid":{PID}}}"#
             ),
         )
         .unwrap();

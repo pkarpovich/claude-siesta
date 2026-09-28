@@ -133,7 +133,7 @@ pub fn run(paths: &Paths) -> ExitCode {
     restore_terminal();
     match outcome {
         Ok(Outcome::Quit) => ExitCode::SUCCESS,
-        Ok(Outcome::Resume) => resume(paths, &session, &screen.entry),
+        Ok(Outcome::Resume) => resume(paths, &session, resume_command(&screen.entry, paths)),
         Err(error) => {
             eprintln!("claude-siesta: terminal: {error}");
             ExitCode::from(1)
@@ -294,14 +294,14 @@ pub fn resume_command(entry: &MapEntry, paths: &Paths) -> ResumeCommand {
     }
 }
 
-fn resume(paths: &Paths, session: &SessionId, entry: &MapEntry) -> ExitCode {
+fn resume(paths: &Paths, session: &SessionId, command: ResumeCommand) -> ExitCode {
     let _ = state::remove(paths, session);
     let ResumeCommand {
         program,
         args,
         env,
         cwd,
-    } = resume_command(entry, paths);
+    } = command;
     let mut command = Command::new(&program);
     command.args(&args).envs(env);
     if let Some(cwd) = cwd
@@ -383,10 +383,16 @@ fn event_loop(
 
 #[cfg(test)]
 mod tests {
+    use std::process::Stdio;
+
     use crossterm::event::{KeyEvent, KeyModifiers, MouseButton, MouseEvent};
+    use nix::sys::signal::raise;
 
     use super::*;
     use crate::ccmap::ConvId;
+
+    const EXEC_CHILD: &str = "CLAUDE_SIESTA_TEST_EXEC_CHILD";
+    const MISSING_PROGRAM: &str = "claude-siesta-test-missing-binary";
 
     fn temp_home(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -651,5 +657,60 @@ mod tests {
             ..entry(Profile::Personal)
         };
         assert_eq!(fallback_name(&session, &entry), "7320056A");
+    }
+
+    #[test]
+    fn sigusr1_requests_resume() {
+        install_resume_handler().unwrap();
+        RESUME.store(false, Ordering::SeqCst);
+        raise(Signal::SIGUSR1).unwrap();
+        assert!(RESUME.swap(false, Ordering::SeqCst));
+    }
+
+    #[test]
+    fn failed_exec_removes_state_and_exits_1() {
+        let Some(home) = std::env::var_os(EXEC_CHILD) else {
+            let home = temp_home("exec");
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "placeholder::tests::failed_exec_removes_state_and_exits_1",
+                    "--nocapture",
+                    "--test-threads=1",
+                ])
+                .env(EXEC_CHILD, &home)
+                .stdin(Stdio::null())
+                .output()
+                .unwrap();
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(output.status.success(), "{stderr}");
+            assert!(
+                stderr.contains(&format!("claude-siesta: cannot run {MISSING_PROGRAM}")),
+                "{stderr}"
+            );
+            return;
+        };
+        let paths = Paths::from_home(PathBuf::from(home));
+        let session = SessionId::new("7320056A-0000");
+        state::write(
+            &paths,
+            &ParkState {
+                session: session.clone(),
+                conv: ConvId::new("c0acdbe6-1"),
+                profile: Profile::Personal,
+                parked_at: at(2_000),
+                last_assistant_at: at(1_000),
+                placeholder_pid: None,
+            },
+        )
+        .unwrap();
+        let command = ResumeCommand {
+            program: String::from(MISSING_PROGRAM),
+            args: Vec::new(),
+            env: Vec::new(),
+            cwd: None,
+        };
+        assert_eq!(resume(&paths, &session, command), ExitCode::from(1));
+        assert_eq!(state::read(&paths, &session), None);
     }
 }

@@ -401,10 +401,10 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 
 ### Task 14: Verify acceptance criteria
 
-- [ ] every requirement in Overview and Technical Details is implemented; every non-goal is still a non-goal (no `session status`, `background`, `context` or `flag` call anywhere: `grep -rn '"status"\|"background"\|"context"\|"flag"' src/agterm.rs` finds none)
-- [ ] no path in `src/` is hardcoded to a user home (`grep -rn '/Users/' src/` finds nothing)
-- [ ] `mise run check` passes; `cargo build --release` passes and the release binary is under 5 MB
-- [ ] every `SkipReason` and every placeholder exit path is covered by a test
+- [x] every requirement in Overview and Technical Details is implemented; every non-goal is still a non-goal (no `session status`, `background`, `context` or `flag` call anywhere: `grep -rn '"status"\|"background"\|"context"\|"flag"' src/agterm.rs` finds none)
+- [x] no path in `src/` is hardcoded to a user home (`grep -rn '/Users/' src/` finds nothing) (the test fixtures used `/Users/x`; they now use `/home/x`, including `tests/fixtures/tree.json`)
+- [x] `mise run check` passes; `cargo build --release` passes and the release binary is under 5 MB (release binary 819616 bytes)
+- [x] every `SkipReason` and every placeholder exit path is covered by a test (`resume` now takes the `ResumeCommand` so a test can exec a missing binary in a re-executed child test process: the state file is removed and the exit code is 1; a raised SIGUSR1 sets the resume flag; a terminal I/O error and a `sigaction` failure map straight to exit 1 and are not unit-testable)
 
 ### Task 15: [Final] Documentation
 

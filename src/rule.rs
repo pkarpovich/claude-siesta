@@ -157,12 +157,12 @@ mod tests {
         } = *row;
         let foreground = match foreground {
             Foreground::Claude => vec![
-                "/Users/x/.local/bin/claude".to_string(),
+                "/home/x/.local/bin/claude".to_string(),
                 "--resume".to_string(),
                 "c1".to_string(),
             ],
             Foreground::Shell => Vec::new(),
-            Foreground::Placeholder => vec!["/Users/x/.local/bin/claude-siesta".to_string()],
+            Foreground::Placeholder => vec!["/home/x/.local/bin/claude-siesta".to_string()],
             Foreground::Editor => vec!["vim".to_string()],
         };
         Session {
