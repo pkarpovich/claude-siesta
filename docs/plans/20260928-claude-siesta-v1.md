@@ -378,13 +378,15 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 
 **Files:**
 - Create: `src/status.rs`
+- Create: `src/resume.rs`
 - Modify: `src/main.rs`
 - Modify: `src/lib.rs`
+- Modify: `src/park.rs`, `src/transcript.rs`, `src/placeholder.rs` (shared helpers)
 
-- [ ] `claude-siesta resume <id|prefix>`: resolve the session, read its state file, SIGUSR1 the `placeholder_pid` after checking it is alive and its command ends with `claude-siesta`; clear errors for no state file / no pid / dead pid; exit codes 0/1
-- [ ] `src/status.rs`: gather rows per Technical Details / Status and a pure `format_table(&[StatusRow]) -> String` with aligned columns
-- [ ] write tests for `format_table` (alignment, truncation of long names, empty input prints a header only) and for the state column classification
-- [ ] `mise run check` passes
+- [x] `claude-siesta resume <id|prefix>`: resolve the session, read its state file, SIGUSR1 the `placeholder_pid` after checking it is alive and its command ends with `claude-siesta`; clear errors for no state file / no pid / dead pid; exit codes 0/1 (`resume::signal_placeholder` in `src/resume.rs`, a live pid running something else is a fourth error; `park::process_command` is split out of `pid_is_claude` for the `ps -o comm=` check)
+- [x] `src/status.rs`: gather rows per Technical Details / Status and a pure `format_table(&[StatusRow]) -> String` with aligned columns (`gather` takes `&dyn AgtermOps`; `transcript::load_last` replaces the identical private helpers in `park` and `placeholder`)
+- [x] write tests for `format_table` (alignment, truncation of long names, empty input prints a header only) and for the state column classification (plus `gather` with a fake agterm, and every `signal_placeholder` error path and a real SIGUSR1 delivery against spawned children)
+- [x] `mise run check` passes
 
 ### Task 13: launchd agent and install tasks
 

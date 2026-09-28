@@ -8,7 +8,9 @@ use claude_siesta::daemon;
 use claude_siesta::park::{self, FOREGROUND_POLL, ParkEnv, ParkOutcome, SystemProcesses};
 use claude_siesta::paths::Paths;
 use claude_siesta::placeholder;
+use claude_siesta::resume;
 use claude_siesta::rule::Mode;
+use claude_siesta::status;
 
 fn main() -> ExitCode {
     let mut args = Vec::new();
@@ -27,8 +29,8 @@ fn main() -> ExitCode {
         Command::Placeholder => run_placeholder(),
         Command::Daemon => run_daemon(),
         Command::Park(query) => park_now(query),
-        Command::Resume(_) => not_implemented("resume"),
-        Command::Status => not_implemented("status"),
+        Command::Resume(query) => resume_now(query),
+        Command::Status => show_status(),
     }
 }
 
@@ -108,7 +110,44 @@ fn park_now(query: SessionQuery) -> ExitCode {
     }
 }
 
-fn not_implemented(name: &str) -> ExitCode {
-    eprintln!("claude-siesta: {name}: not implemented");
-    ExitCode::from(1)
+fn resume_now(query: SessionQuery) -> ExitCode {
+    let Some(paths) = Paths::from_env() else {
+        eprintln!("claude-siesta: HOME is not set");
+        return ExitCode::from(1);
+    };
+    let SessionQuery(query) = query;
+    let (_, session) = match Agterm::default().resolve_prefix(&query) {
+        Ok(found) => found,
+        Err(error) => {
+            eprintln!("claude-siesta: {error}");
+            return ExitCode::from(1);
+        }
+    };
+    match resume::signal_placeholder(&paths, &session.id) {
+        Ok(pid) => {
+            println!("resumed {} (placeholder pid {pid})", session.id.as_str());
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("claude-siesta: {error}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn show_status() -> ExitCode {
+    let Some(paths) = Paths::from_env() else {
+        eprintln!("claude-siesta: HOME is not set");
+        return ExitCode::from(1);
+    };
+    match status::gather(&Agterm::default(), &paths, SystemTime::now()) {
+        Ok(rows) => {
+            print!("{}", status::format_table(&rows));
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("claude-siesta: {error}");
+            ExitCode::from(1)
+        }
+    }
 }

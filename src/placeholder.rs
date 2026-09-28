@@ -120,7 +120,7 @@ pub fn run(paths: &Paths) -> ExitCode {
     };
     let screen = Screen {
         name: session_name(&session, &entry),
-        last: load_last(paths, &entry),
+        last: transcript::load_last(paths, &entry),
         entry,
         parked_at,
     };
@@ -177,12 +177,6 @@ pub fn fallback_name(session: &SessionId, entry: &MapEntry) -> String {
         return session.as_str().to_string();
     };
     name.to_string_lossy().into_owned()
-}
-
-fn load_last(paths: &Paths, entry: &MapEntry) -> Option<LastAssistant> {
-    let path = transcript::find_transcript(paths, entry.profile, &entry.conv)?;
-    let (bytes, start) = transcript::read_tail(&path).ok()?;
-    transcript::last_assistant(&bytes, start)
 }
 
 pub fn view_model(screen: &Screen, now: SystemTime, home: &Path) -> ViewModel {

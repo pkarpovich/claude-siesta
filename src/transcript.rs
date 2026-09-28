@@ -119,6 +119,19 @@ pub fn find_transcript(paths: &Paths, profile: Profile, conv: &ConvId) -> Option
     None
 }
 
+pub fn load_last(paths: &Paths, entry: &MapEntry) -> Option<LastAssistant> {
+    let MapEntry {
+        conv,
+        profile,
+        cwd: _,
+        ts: _,
+        pid: _,
+    } = entry;
+    let path = find_transcript(paths, *profile, conv)?;
+    let (bytes, start) = read_tail(&path).ok()?;
+    last_assistant(&bytes, start)
+}
+
 pub fn read_tail(path: &Path) -> io::Result<(Vec<u8>, TailStart)> {
     read_last_bytes(path, TAIL_BYTES)
 }

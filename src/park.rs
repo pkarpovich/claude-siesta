@@ -52,24 +52,27 @@ impl ProcessOps for SystemProcesses {
 }
 
 pub fn pid_is_claude(pid: i32) -> bool {
-    if pid <= 0 {
-        return false;
-    }
-    if kill(Pid::from_raw(pid), None).is_err() {
-        return false;
-    }
-    let Ok(output) = Command::new("/bin/ps")
-        .args(["-o", "comm=", "-p", &pid.to_string()])
-        .output()
-    else {
+    let Some(command) = process_command(pid) else {
         return false;
     };
-    if !output.status.success() {
-        return false;
+    command.ends_with("claude")
+}
+
+pub fn process_command(pid: i32) -> Option<String> {
+    if pid <= 0 {
+        return None;
     }
-    String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .ends_with("claude")
+    if kill(Pid::from_raw(pid), None).is_err() {
+        return None;
+    }
+    let output = Command::new("/bin/ps")
+        .args(["-o", "comm=", "-p", &pid.to_string()])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 pub fn terminate(pid: i32, poll: Poll) {
@@ -149,7 +152,10 @@ pub enum ParkOutcome {
 
 pub fn run(env: &ParkEnv, window: &WindowId, session: &Session, mode: Mode) -> ParkOutcome {
     let entry = MapEntry::load(env.paths, &session.id).unwrap_or_default();
-    let last = last_assistant(env.paths, entry.as_ref());
+    let last = match &entry {
+        Some(entry) => transcript::load_last(env.paths, entry),
+        None => None,
+    };
     let idle = match &entry {
         Some(entry) => transcript::idle(env.now, last.as_ref(), entry),
         None => Duration::ZERO,
@@ -297,19 +303,6 @@ fn wait_for_shell(env: &ParkEnv, window: &WindowId, id: &SessionId) -> Result<()
         step: ParkStep::ForegroundBusy,
         detail: None,
     })
-}
-
-fn last_assistant(paths: &Paths, entry: Option<&MapEntry>) -> Option<LastAssistant> {
-    let MapEntry {
-        conv,
-        profile,
-        cwd: _,
-        ts: _,
-        pid: _,
-    } = entry?;
-    let path = transcript::find_transcript(paths, *profile, conv)?;
-    let (bytes, start) = transcript::read_tail(&path).ok()?;
-    transcript::last_assistant(&bytes, start)
 }
 
 fn first_line(text: &str) -> &str {
