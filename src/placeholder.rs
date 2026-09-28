@@ -633,7 +633,7 @@ mod tests {
                 name: String::from("siesta"),
                 cwd_display: String::from("~/Projects/siesta"),
                 conv_short: String::from("c0acdbe6"),
-                idle: String::from("26h 12m"),
+                idle: String::from("1d 2h"),
                 parked_at: Some(format_local_minute(at(1_790_500_000))),
                 excerpt: String::from("Done."),
             }

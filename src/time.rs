@@ -182,11 +182,14 @@ pub fn from_unix_seconds(seconds: u64) -> SystemTime {
 pub fn format_idle(idle: Duration) -> String {
     let minutes = idle.as_secs() / 60;
     let hours = minutes / 60;
-    let minutes = minutes % 60;
-    if hours == 0 {
-        return format!("{minutes}m");
+    let days = hours / 24;
+    if days > 0 {
+        return format!("{days}d {}h", hours % 24);
     }
-    format!("{hours}h {minutes}m")
+    if hours > 0 {
+        return format!("{hours}h {}m", minutes % 60);
+    }
+    format!("{minutes}m")
 }
 
 #[cfg(test)]
@@ -293,10 +296,19 @@ mod tests {
             format_idle(Duration::from_secs(3 * 3600 + 12 * 60)),
             "3h 12m"
         );
+        assert_eq!(format_idle(Duration::from_secs(3600)), "1h 0m");
+        assert_eq!(
+            format_idle(Duration::from_secs(23 * 3600 + 59 * 60)),
+            "23h 59m"
+        );
+        assert_eq!(format_idle(Duration::from_secs(24 * 3600)), "1d 0h");
         assert_eq!(
             format_idle(Duration::from_secs(26 * 3600 + 12 * 60)),
-            "26h 12m"
+            "1d 2h"
         );
-        assert_eq!(format_idle(Duration::from_secs(3600)), "1h 0m");
+        assert_eq!(
+            format_idle(Duration::from_secs(1145 * 3600 + 32 * 60)),
+            "47d 17h"
+        );
     }
 }

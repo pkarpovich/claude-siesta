@@ -253,9 +253,9 @@ mod tests {
         assert_eq!(
             table,
             concat!(
-                "NAME           CONV      IDLE     STATE   LAST\n",
-                "api            c0acdbe6  45m      live    skip\n",
-                "claude-siesta  c0acdbe6  26h 12m  parked  -\n",
+                "NAME           CONV      IDLE   STATE   LAST\n",
+                "api            c0acdbe6  45m    live    skip\n",
+                "claude-siesta  c0acdbe6  1d 2h  parked  -\n",
             )
         );
     }
