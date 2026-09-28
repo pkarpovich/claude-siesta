@@ -88,36 +88,57 @@ pub fn tick(env: &ParkEnv, stop: &AtomicBool) -> TickReport {
         Ok(sessions) => sessions,
         Err(error) => {
             let message = error.to_string();
-            write_log(
-                env.paths,
-                &LogLine {
-                    action: Action::TickFailed,
-                    session: None,
-                    conv: None,
-                    idle: None,
-                    reason: message.clone(),
-                },
-            );
+            write_log(env.paths, &tick_failed_line(message.clone()));
             report.agterm_error = Some(message);
             return report;
         }
     };
-    let mut seen = Vec::new();
     for (window, session) in &sessions {
         if stop.load(Ordering::SeqCst) {
             return report;
         }
-        seen.push(session.id.clone());
         match park::run(env, window, session, Mode::Daemon) {
             ParkOutcome::Parked => report.parked += 1,
             ParkOutcome::Skipped(_) => report.skipped += 1,
             ParkOutcome::Failed(_) => report.failed += 1,
         }
     }
+    cleanup(env);
+    report
+}
+
+fn cleanup(env: &ParkEnv) {
+    let _lock = match state::lock_parking(env.paths) {
+        Ok(lock) => lock,
+        Err(error) => {
+            write_log(env.paths, &tick_failed_line(format!("cleanup: {error}")));
+            return;
+        }
+    };
+    let sessions = match env.agterm.all_sessions() {
+        Ok(sessions) => sessions,
+        Err(error) => {
+            write_log(env.paths, &tick_failed_line(format!("cleanup: {error}")));
+            return;
+        }
+    };
+    let mut seen = Vec::new();
+    for (_, session) in sessions {
+        seen.push(session.id);
+    }
     for id in state::cleanup(env.paths, &seen) {
         write_log(env.paths, &cleanup_line(id));
     }
-    report
+}
+
+fn tick_failed_line(reason: String) -> LogLine {
+    LogLine {
+        action: Action::TickFailed,
+        session: None,
+        conv: None,
+        idle: None,
+        reason,
+    }
 }
 
 fn cleanup_line(session: SessionId) -> LogLine {
@@ -524,6 +545,28 @@ mod tests {
         );
         assert_eq!(processes.terminated.borrow().clone(), vec![108, 101]);
         assert_eq!(agterm.restored.borrow().clone(), vec![PARKABLE.to_string()]);
+        assert!(!paths.state_file(&SessionId::new(VANISHED)).exists());
+    }
+
+    #[test]
+    fn cleanup_keeps_state_of_a_session_that_appeared_during_the_tick() {
+        let paths = temp_home("appeared");
+        state::write(&paths, &parked_state(FRESH)).unwrap();
+        state::write(&paths, &parked_state(VANISHED)).unwrap();
+        let agterm = FakeAgterm::new(
+            vec![
+                (WINDOW_A, vec![Vec::new(), vec![session(FRESH, &[])]]),
+                (WINDOW_B, vec![Vec::new()]),
+            ],
+            Failing::Nothing,
+        );
+        let processes = FakeProcesses {
+            terminated: RefCell::new(Vec::new()),
+        };
+
+        run_tick(&paths, &agterm, &processes);
+
+        assert!(paths.state_file(&SessionId::new(FRESH)).exists());
         assert!(!paths.state_file(&SessionId::new(VANISHED)).exists());
     }
 

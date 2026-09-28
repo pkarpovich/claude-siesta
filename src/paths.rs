@@ -47,6 +47,10 @@ impl Paths {
         self.state_dir().join("claude-siesta.log")
     }
 
+    pub fn park_lock_file(&self) -> PathBuf {
+        self.state_dir().join("park.lock")
+    }
+
     pub fn config_file(&self) -> PathBuf {
         self.home.join(".config/claude-siesta/config.toml")
     }
@@ -71,6 +75,7 @@ mod tests {
         all.push(paths.state_dir());
         all.push(paths.state_file(&session));
         all.push(paths.log_file());
+        all.push(paths.park_lock_file());
         all.push(paths.config_file());
         for path in all {
             assert!(path.starts_with("/fake/home"), "{path:?}");
@@ -91,6 +96,10 @@ mod tests {
         assert_eq!(
             paths.log_file(),
             PathBuf::from("/fake/home/.local/state/claude-siesta/claude-siesta.log")
+        );
+        assert_eq!(
+            paths.park_lock_file(),
+            PathBuf::from("/fake/home/.local/state/claude-siesta/park.lock")
         );
         assert_eq!(
             paths.config_file(),

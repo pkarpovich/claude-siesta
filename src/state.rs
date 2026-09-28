@@ -1,3 +1,4 @@
+use std::fs::{File, OpenOptions};
 use std::io;
 use std::time::SystemTime;
 
@@ -91,7 +92,7 @@ pub fn read(paths: &Paths, session: &SessionId) -> Option<ParkState> {
     Some(ParkState::from_file(file))
 }
 
-pub fn set_placeholder_pid(paths: &Paths, session: &SessionId, pid: i32) -> io::Result<()> {
+pub fn set_placeholder_pid(paths: &Paths, session: &SessionId, pid: Option<i32>) -> io::Result<()> {
     let Some(state) = read(paths, session) else {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
@@ -99,10 +100,23 @@ pub fn set_placeholder_pid(paths: &Paths, session: &SessionId, pid: i32) -> io::
         ));
     };
     let state = ParkState {
-        placeholder_pid: Some(pid),
+        placeholder_pid: pid,
         ..state
     };
     write(paths, &state)
+}
+
+/// Blocks until no other claude-siesta process is parking or cleaning up, and holds that off
+/// until the returned file is dropped.
+pub fn lock_parking(paths: &Paths) -> io::Result<File> {
+    std::fs::create_dir_all(paths.state_dir())?;
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(paths.park_lock_file())?;
+    file.lock()?;
+    Ok(file)
 }
 
 pub fn remove(paths: &Paths, session: &SessionId) -> io::Result<()> {
@@ -240,7 +254,7 @@ mod tests {
         let home = temp_home("pid");
         let paths = Paths::from_home(home.clone());
         write(&paths, &state("AAAA")).unwrap();
-        set_placeholder_pid(&paths, &SessionId::new("AAAA"), 4242).unwrap();
+        set_placeholder_pid(&paths, &SessionId::new("AAAA"), Some(4242)).unwrap();
         let expected = ParkState {
             placeholder_pid: Some(4242),
             ..state("AAAA")
@@ -250,10 +264,36 @@ mod tests {
     }
 
     #[test]
+    fn set_placeholder_pid_none_clears_it() {
+        let home = temp_home("pid-clear");
+        let paths = Paths::from_home(home.clone());
+        write(&paths, &state("AAAA")).unwrap();
+        set_placeholder_pid(&paths, &SessionId::new("AAAA"), Some(4242)).unwrap();
+        set_placeholder_pid(&paths, &SessionId::new("AAAA"), None).unwrap();
+        assert_eq!(read(&paths, &SessionId::new("AAAA")), Some(state("AAAA")));
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    #[test]
+    fn park_lock_excludes_a_second_holder_until_dropped() {
+        let home = temp_home("park-lock");
+        let paths = Paths::from_home(home.clone());
+        let held = lock_parking(&paths).unwrap();
+        let second = File::open(paths.park_lock_file()).unwrap();
+        assert!(second.try_lock().is_err());
+        drop(held);
+        second.try_lock().unwrap();
+        assert!(list(&paths).is_empty());
+        assert!(cleanup(&paths, &[]).is_empty());
+        assert!(paths.park_lock_file().exists());
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    #[test]
     fn set_placeholder_pid_without_state_is_not_found() {
         let home = temp_home("pid-missing");
         let paths = Paths::from_home(home.clone());
-        let error = set_placeholder_pid(&paths, &SessionId::new("AAAA"), 1).unwrap_err();
+        let error = set_placeholder_pid(&paths, &SessionId::new("AAAA"), Some(1)).unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::NotFound);
         assert_eq!(read(&paths, &SessionId::new("AAAA")), None);
         std::fs::remove_dir_all(home).unwrap();

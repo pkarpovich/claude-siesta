@@ -96,6 +96,28 @@ impl Drop for TerminalGuard {
     }
 }
 
+struct PlaceholderPidGuard<'a> {
+    paths: &'a Paths,
+    session: &'a SessionId,
+}
+
+impl<'a> PlaceholderPidGuard<'a> {
+    fn record(paths: &'a Paths, session: &'a SessionId) -> Self {
+        let pid = Some(std::process::id() as i32);
+        if let Err(error) = state::set_placeholder_pid(paths, session, pid) {
+            eprintln!("claude-siesta: cannot record placeholder pid: {error}");
+        }
+        PlaceholderPidGuard { paths, session }
+    }
+}
+
+impl Drop for PlaceholderPidGuard<'_> {
+    fn drop(&mut self) {
+        let PlaceholderPidGuard { paths, session } = self;
+        forget_placeholder_pid(paths, session);
+    }
+}
+
 pub fn run(paths: &Paths) -> ExitCode {
     let (session, entry) = match start(paths, std::env::var("AGTERM_SESSION_ID").ok()) {
         Ok(started) => started,
@@ -108,7 +130,7 @@ pub fn run(paths: &Paths) -> ExitCode {
         eprintln!("claude-siesta: cannot install signal handler: {error}");
         return ExitCode::from(1);
     }
-    let parked_at = match state::read(paths, &session) {
+    let (parked_at, _pid_guard) = match state::read(paths, &session) {
         Some(ParkState {
             session: _,
             conv: _,
@@ -116,11 +138,11 @@ pub fn run(paths: &Paths) -> ExitCode {
             parked_at,
             last_assistant_at: _,
             placeholder_pid: _,
-        }) => {
-            let _ = state::set_placeholder_pid(paths, &session, std::process::id() as i32);
-            Some(parked_at)
-        }
-        None => None,
+        }) => (
+            Some(parked_at),
+            Some(PlaceholderPidGuard::record(paths, &session)),
+        ),
+        None => (None, None),
     };
     let screen = Screen {
         name: session_name(&session, &entry),
@@ -139,6 +161,16 @@ pub fn run(paths: &Paths) -> ExitCode {
             ExitCode::from(1)
         }
     }
+}
+
+fn forget_placeholder_pid(paths: &Paths, session: &SessionId) {
+    let Err(error) = state::set_placeholder_pid(paths, session, None) else {
+        return;
+    };
+    if error.kind() == io::ErrorKind::NotFound {
+        return;
+    }
+    eprintln!("claude-siesta: cannot clear placeholder pid: {error}");
 }
 
 pub fn start(
@@ -661,6 +693,61 @@ mod tests {
         RESUME.store(false, Ordering::SeqCst);
         raise(Signal::SIGUSR1).unwrap();
         assert!(RESUME.swap(false, Ordering::SeqCst));
+    }
+
+    fn parked(paths: &Paths, session: &SessionId) -> ParkState {
+        let state = ParkState {
+            session: session.clone(),
+            conv: ConvId::new("c0acdbe6-1"),
+            profile: Profile::Personal,
+            parked_at: at(2_000),
+            last_assistant_at: at(1_000),
+            placeholder_pid: None,
+        };
+        state::write(paths, &state).unwrap();
+        state
+    }
+
+    #[test]
+    fn pid_guard_records_then_clears_the_pid() {
+        let home = temp_home("pid-guard");
+        let paths = Paths::from_home(home.clone());
+        let session = SessionId::new("7320056A-0001");
+        let unrecorded = parked(&paths, &session);
+        let guard = PlaceholderPidGuard::record(&paths, &session);
+        let recorded = state::read(&paths, &session).unwrap();
+        assert_eq!(recorded.placeholder_pid, Some(std::process::id() as i32));
+        drop(guard);
+        assert_eq!(state::read(&paths, &session), Some(unrecorded));
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    #[test]
+    fn pid_guard_clears_the_pid_when_a_panic_unwinds() {
+        let home = temp_home("pid-guard-panic");
+        let paths = Paths::from_home(home.clone());
+        let session = SessionId::new("7320056A-0002");
+        let unrecorded = parked(&paths, &session);
+        let unwound = std::panic::catch_unwind(|| {
+            let _guard = PlaceholderPidGuard::record(&paths, &session);
+            panic!("terminal broke");
+        });
+        assert!(unwound.is_err());
+        assert_eq!(state::read(&paths, &session), Some(unrecorded));
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    #[test]
+    fn pid_guard_is_quiet_after_resume_removed_the_state() {
+        let home = temp_home("pid-guard-removed");
+        let paths = Paths::from_home(home.clone());
+        let session = SessionId::new("7320056A-0003");
+        parked(&paths, &session);
+        let guard = PlaceholderPidGuard::record(&paths, &session);
+        state::remove(&paths, &session).unwrap();
+        drop(guard);
+        assert_eq!(state::read(&paths, &session), None);
+        std::fs::remove_dir_all(home).unwrap();
     }
 
     #[test]

@@ -24,7 +24,7 @@ There is deliberately no sidebar marker: the daemon never sets a status, color, 
 
 ## Resuming
 
-In the placeholder pane, press **Enter** or **Space**, or click anywhere in the pane. `q` or `Esc` leaves the placeholder for a plain fish prompt without resuming; the session stays parked (its state file and restore line are kept), and running `claude-siesta` in the pane brings the placeholder back. Outside an agterm session, or in a session with no cc-map entry, the placeholder prints why and exits 1.
+In the placeholder pane, press **Enter** or **Space**, or click anywhere in the pane. `q` or `Esc` leaves the placeholder for a plain fish prompt without resuming; the session stays parked (its state file and restore line are kept, the placeholder pid is cleared), and running `claude-siesta` in the pane brings the placeholder back. Outside an agterm session, or in a session with no cc-map entry, the placeholder prints why and exits 1.
 
 From any other shell, `claude-siesta resume <id|prefix>` sends SIGUSR1 to that session's placeholder, which resumes the same way.
 
@@ -70,6 +70,7 @@ Read:
 Written:
 
 - `$HOME/.local/state/claude-siesta/<SESSION-ID>.json`: one state file per parked session (session, conv, profile, when it was parked, when claude last answered, the placeholder's pid). The placeholder deletes it on resume; the daemon deletes the files of sessions that are in no open agterm window, so a parked session in a closed window loses its file (Enter in its pane still resumes it, `claude-siesta resume` from another shell no longer finds it).
+- `$HOME/.local/state/claude-siesta/park.lock`: an empty file locked with `flock` from the recheck before the kill through the typed placeholder, and around the daemon's state-file cleanup, so a manual `park` and a daemon tick never park the same session twice or delete each other's state.
 - `$HOME/.local/state/claude-siesta/claude-siesta.log`: one line per decision (time, action, session, conv, idle minutes, reason). The actions are `start`, `park`, `skip`, `park-failed`, `cleanup` and `tick-failed`; `skip` is logged only for sessions running claude, with one of the reasons `not-claude`, `not-mapped`, `pid-not-claude`, `agent-working`, `flagged`, `selected` or `not-idle-enough`. It never contains transcript text or paths, and it is not rotated.
 - `$HOME/Library/Logs/claude-siesta.err.log`: the daemon's stderr, written by launchd.
 

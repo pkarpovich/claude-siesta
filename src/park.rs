@@ -106,6 +106,7 @@ pub struct ParkEnv<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParkStep {
+    Lock,
     Tree,
     SessionGone,
     ForegroundBusy,
@@ -117,6 +118,7 @@ pub enum ParkStep {
 impl ParkStep {
     pub fn as_str(self) -> &'static str {
         match self {
+            ParkStep::Lock => "lock",
             ParkStep::Tree => "tree",
             ParkStep::SessionGone => "session-gone",
             ParkStep::ForegroundBusy => "foreground-busy",
@@ -203,6 +205,17 @@ pub fn run(env: &ParkEnv, window: &WindowId, session: &Session, mode: Mode) -> P
             return ParkOutcome::Skipped(reason);
         }
     }
+    let _lock = match state::lock_parking(env.paths) {
+        Ok(lock) => lock,
+        Err(error) => {
+            let failure = ParkFailure {
+                step: ParkStep::Lock,
+                detail: Some(error.to_string()),
+            };
+            write_log(env.paths, &line(Action::ParkFailed, failure.reason()));
+            return ParkOutcome::Failed(failure);
+        }
+    };
     let fresh = match find_session(env, window, &session.id) {
         Ok(fresh) => fresh,
         Err(failure) => {
@@ -663,6 +676,24 @@ mod tests {
         assert_eq!(step, ParkStep::Tree);
         assert_eq!(agterm.calls(), vec![Call::Tree(WINDOW.to_string())]);
         assert!(!paths.state_file(&SessionId::new(SESSION)).exists());
+    }
+
+    #[test]
+    fn lock_failure_before_the_kill_leaves_claude_running() {
+        let paths = home_with_entry("lock-fails");
+        std::fs::create_dir_all(paths.park_lock_file()).unwrap();
+        let agterm = FakeAgterm::new(vec![vec![live()], vec![shell()]], Failing::Nothing);
+        let processes = FakeProcesses::new(true, &agterm);
+        let outcome = park(&paths, &agterm, &processes, &live(), Mode::Daemon);
+        let ParkOutcome::Failed(ParkFailure { step, detail: _ }) = outcome else {
+            panic!("expected a failure, got {outcome:?}");
+        };
+        assert_eq!(step, ParkStep::Lock);
+        assert_eq!(agterm.calls(), Vec::new());
+        assert!(!paths.state_file(&SessionId::new(SESSION)).exists());
+        let log = std::fs::read_to_string(paths.log_file()).unwrap();
+        assert!(log.contains(" park-failed "));
+        assert!(log.contains("lock"));
     }
 
     #[test]
