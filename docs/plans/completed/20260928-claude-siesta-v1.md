@@ -412,9 +412,9 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Create: `README.md`
 - Create: `CLAUDE.md`
 
-- [ ] `README.md`: what claude-siesta does and why (the memory numbers), the commands, the config keys, the files it reads and writes, install/uninstall, how to resume (Enter/Space/click/`claude-siesta resume`), and the dependency on Pavel's cc-map hooks; one line per paragraph, no hard wraps
-- [ ] `CLAUDE.md` in the moji/nikki style: code rules only (pure modules vs IO shells, tests inline, no async, no sidebar marker and why, the agtermctl absolute path and `--window` rule, never `--select`, terminal-restore guard on every exit path); point to this plan for the decisions
-- [ ] move this plan to `docs/plans/completed/`
+- [x] `README.md`: what claude-siesta does and why (the memory numbers), the commands, the config keys, the files it reads and writes, install/uninstall, how to resume (Enter/Space/click/`claude-siesta resume`), and the dependency on Pavel's cc-map hooks; one line per paragraph, no hard wraps
+- [x] `CLAUDE.md` in the moji/nikki style: code rules only (pure modules vs IO shells, tests inline, no async, no sidebar marker and why, the agtermctl absolute path and `--window` rule, never `--select`, terminal-restore guard on every exit path); point to this plan for the decisions
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-Completion
 
