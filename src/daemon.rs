@@ -361,6 +361,7 @@ mod tests {
             name: id.to_string(),
             active: false,
             flagged: false,
+            split: false,
             foreground: argv,
             status: AgentStatus::Idle,
             restore_command: None,

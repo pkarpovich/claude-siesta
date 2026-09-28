@@ -519,6 +519,7 @@ mod tests {
             name: "tuclaw".to_string(),
             active,
             flagged: false,
+            split: false,
             foreground: argv,
             status: AgentStatus::Idle,
             restore_command: None,

@@ -12,6 +12,7 @@ pub enum Mode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkipReason {
     NotClaude,
+    Split,
     NotMapped,
     PidNotClaude,
     AgentWorking,
@@ -24,6 +25,7 @@ impl SkipReason {
     pub fn as_str(self) -> &'static str {
         match self {
             SkipReason::NotClaude => "not-claude",
+            SkipReason::Split => "split",
             SkipReason::NotMapped => "not-mapped",
             SkipReason::PidNotClaude => "pid-not-claude",
             SkipReason::AgentWorking => "agent-working",
@@ -61,6 +63,9 @@ pub fn decide(input: &RuleInput) -> Decision {
     } = *input;
     if !session.runs_claude() {
         return Decision::Skip(SkipReason::NotClaude);
+    }
+    if session.split {
+        return Decision::Skip(SkipReason::Split);
     }
     let Some(entry) = entry else {
         return Decision::Skip(SkipReason::NotMapped);
@@ -124,6 +129,7 @@ mod tests {
     struct Row {
         name: &'static str,
         foreground: Foreground,
+        split: bool,
         mapping: Mapping,
         pid_is_claude: bool,
         status: AgentStatus,
@@ -137,6 +143,7 @@ mod tests {
     const PARKABLE: Row = Row {
         name: "all checks pass",
         foreground: Foreground::Claude,
+        split: false,
         mapping: Mapping::WithPid,
         pid_is_claude: true,
         status: AgentStatus::Completed,
@@ -150,6 +157,7 @@ mod tests {
     fn session(row: &Row) -> Session {
         let Row {
             foreground,
+            split,
             status,
             flagged,
             selected,
@@ -170,6 +178,7 @@ mod tests {
             name: "test".to_string(),
             active: selected,
             flagged,
+            split,
             foreground,
             status,
             restore_command: None,
@@ -210,6 +219,19 @@ mod tests {
                 name: "editor is not claude",
                 foreground: Foreground::Editor,
                 expected: Decision::Skip(SkipReason::NotClaude),
+                ..PARKABLE
+            },
+            Row {
+                name: "split session",
+                split: true,
+                expected: Decision::Skip(SkipReason::Split),
+                ..PARKABLE
+            },
+            Row {
+                name: "manual refuses split session",
+                split: true,
+                mode: Mode::Manual,
+                expected: Decision::Skip(SkipReason::Split),
                 ..PARKABLE
             },
             Row {
@@ -312,6 +334,7 @@ mod tests {
             Row {
                 name: "first failing check wins",
                 foreground: Foreground::Shell,
+                split: true,
                 mapping: Mapping::Missing,
                 pid_is_claude: false,
                 status: AgentStatus::Active,

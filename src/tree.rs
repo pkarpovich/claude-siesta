@@ -49,6 +49,7 @@ pub struct Session {
     pub name: String,
     pub active: bool,
     pub flagged: bool,
+    pub split: bool,
     pub foreground: Vec<String>,
     pub status: AgentStatus,
     pub restore_command: Option<String>,
@@ -133,6 +134,8 @@ struct WireSession {
     #[serde(default)]
     flagged: bool,
     #[serde(default)]
+    split: bool,
+    #[serde(default)]
     foreground: Vec<String>,
     status: Option<String>,
     restore_command: Option<String>,
@@ -178,6 +181,7 @@ pub fn parse_tree(text: &str) -> Result<Vec<Session>, TreeError> {
             name,
             active,
             flagged,
+            split,
             foreground,
             status,
             restore_command,
@@ -188,6 +192,7 @@ pub fn parse_tree(text: &str) -> Result<Vec<Session>, TreeError> {
                 name,
                 active,
                 flagged,
+                split,
                 foreground,
                 status: AgentStatus::parse(status.as_deref()),
                 restore_command,
@@ -249,6 +254,7 @@ mod tests {
                 name: "new tuclaw desktop app".to_string(),
                 active: false,
                 flagged: false,
+                split: false,
                 foreground: vec![
                     "/home/x/.local/bin/claude".to_string(),
                     "--enable-auto-mode".to_string(),
@@ -340,11 +346,21 @@ mod tests {
                 name: String::new(),
                 active: false,
                 flagged: false,
+                split: false,
                 foreground: Vec::new(),
                 status: AgentStatus::Idle,
                 restore_command: None,
             }]
         );
+    }
+
+    #[test]
+    fn split_session_is_marked_split() {
+        let sessions = parse_tree(
+            r#"{"ok":true,"result":{"tree":{"workspaces":[{"sessions":[{"id":"a","split":true,"foreground":["/usr/bin/claude"]}]}]}}}"#,
+        )
+        .unwrap();
+        assert!(sessions[0].split);
     }
 
     #[test]
