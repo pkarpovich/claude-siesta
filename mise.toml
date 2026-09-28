@@ -1,9 +1,6 @@
 [tools]
 rust = { version = "1.98.1", components = "rustfmt,clippy" }
 
-[env]
-AGENT_LABEL = "dev.pkarpovich.claude-siesta"
-
 [tasks.build]
 run = "cargo build"
 
@@ -16,42 +13,21 @@ run = "cargo clippy --all-targets -- -D warnings"
 [tasks.fmt]
 run = "cargo fmt --all"
 
-[tasks.lint-plist]
-run = '''
-mkdir -p target/launchd
-sed "s|__HOME__|$HOME|g" "launchd/$AGENT_LABEL.plist" > "target/launchd/$AGENT_LABEL.plist"
-plutil -lint "target/launchd/$AGENT_LABEL.plist"
-'''
-
 [tasks.check]
 run = [
   "cargo fmt --all -- --check",
   "cargo clippy --all-targets -- -D warnings",
   "cargo test",
-  { task = "lint-plist" },
 ]
 
 [tasks.install]
 run = '''
 cargo build --release
-mkdir -p "$HOME/.local/bin" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+mkdir -p "$HOME/.local/bin"
 cp target/release/claude-siesta "$HOME/.local/bin/claude-siesta.tmp"
 mv "$HOME/.local/bin/claude-siesta.tmp" "$HOME/.local/bin/claude-siesta"
-plist="$HOME/Library/LaunchAgents/$AGENT_LABEL.plist"
-sed "s|__HOME__|$HOME|g" "launchd/$AGENT_LABEL.plist" > "$plist"
-plutil -lint "$plist"
-domain="gui/$(id -u)"
-if launchctl print "$domain/$AGENT_LABEL" >/dev/null 2>&1; then
-  launchctl bootout "$domain/$AGENT_LABEL"
-fi
-launchctl bootstrap "$domain" "$plist"
+"$HOME/.local/bin/claude-siesta" install
 '''
 
 [tasks.uninstall]
-run = '''
-domain="gui/$(id -u)"
-if launchctl print "$domain/$AGENT_LABEL" >/dev/null 2>&1; then
-  launchctl bootout "$domain/$AGENT_LABEL"
-fi
-rm -f "$HOME/Library/LaunchAgents/$AGENT_LABEL.plist"
-'''
+run = '"$HOME/.local/bin/claude-siesta" uninstall'

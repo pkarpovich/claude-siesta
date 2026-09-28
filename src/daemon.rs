@@ -8,6 +8,7 @@ use nix::sys::signal::{SaFlags, SigAction, SigHandler, SigSet, Signal, sigaction
 use crate::agterm::Agterm;
 use crate::ccmap::SessionId;
 use crate::config::Config;
+use crate::executable::Executable;
 use crate::log::{Action, LogLine};
 use crate::park::{self, FOREGROUND_POLL, ParkEnv, ParkOutcome, SystemProcesses, write_log};
 use crate::paths::Paths;
@@ -34,6 +35,7 @@ pub struct TickReport {
 pub enum Wake {
     Elapsed,
     Stopped,
+    Replaced,
 }
 
 pub fn run(paths: &Paths, config: Config) -> ExitCode {
@@ -64,6 +66,11 @@ pub fn run(paths: &Paths, config: Config) -> ExitCode {
             ),
         },
     );
+    let executable = Executable::current();
+    let replaced = || match &executable {
+        Some(executable) => executable.swapped(),
+        None => false,
+    };
     let agterm = Agterm::default();
     loop {
         let env = ParkEnv {
@@ -75,9 +82,22 @@ pub fn run(paths: &Paths, config: Config) -> ExitCode {
             foreground_poll: FOREGROUND_POLL,
         };
         tick(&env, &STOP);
-        match wait(poll_interval, STOP_CHECK, &STOP) {
+        match wait(poll_interval, STOP_CHECK, &STOP, &replaced) {
             Wake::Elapsed => {}
             Wake::Stopped => return ExitCode::SUCCESS,
+            Wake::Replaced => {
+                write_log(
+                    paths,
+                    &LogLine {
+                        action: Action::Retire,
+                        session: None,
+                        conv: None,
+                        idle: None,
+                        reason: "binary replaced".to_string(),
+                    },
+                );
+                return ExitCode::SUCCESS;
+            }
         }
     }
 }
@@ -151,11 +171,19 @@ fn cleanup_line(session: SessionId) -> LogLine {
     }
 }
 
-pub fn wait(total: Duration, step: Duration, stop: &AtomicBool) -> Wake {
+pub fn wait(
+    total: Duration,
+    step: Duration,
+    stop: &AtomicBool,
+    replaced: &dyn Fn() -> bool,
+) -> Wake {
     let mut waited = Duration::ZERO;
     loop {
         if stop.load(Ordering::SeqCst) {
             return Wake::Stopped;
+        }
+        if replaced() {
+            return Wake::Replaced;
         }
         if waited >= total {
             return Wake::Elapsed;
@@ -599,8 +627,29 @@ mod tests {
         let stop = AtomicBool::new(true);
         let started = Instant::now();
         assert_eq!(
-            wait(Duration::from_secs(60), Duration::from_secs(1), &stop),
+            wait(
+                Duration::from_secs(60),
+                Duration::from_secs(1),
+                &stop,
+                &|| false
+            ),
             Wake::Stopped
+        );
+        assert!(started.elapsed() < Duration::from_millis(500));
+    }
+
+    #[test]
+    fn wait_returns_at_once_when_the_binary_is_replaced() {
+        let stop = AtomicBool::new(false);
+        let started = Instant::now();
+        assert_eq!(
+            wait(
+                Duration::from_secs(60),
+                Duration::from_secs(1),
+                &stop,
+                &|| true
+            ),
+            Wake::Replaced
         );
         assert!(started.elapsed() < Duration::from_millis(500));
     }
@@ -610,7 +659,12 @@ mod tests {
         let stop = AtomicBool::new(false);
         let started = Instant::now();
         assert_eq!(
-            wait(Duration::from_millis(30), Duration::from_millis(10), &stop),
+            wait(
+                Duration::from_millis(30),
+                Duration::from_millis(10),
+                &stop,
+                &|| false
+            ),
             Wake::Elapsed
         );
         assert!(started.elapsed() >= Duration::from_millis(30));
@@ -626,7 +680,12 @@ mod tests {
         });
         let started = Instant::now();
         assert_eq!(
-            wait(Duration::from_secs(60), Duration::from_millis(10), &stop),
+            wait(
+                Duration::from_secs(60),
+                Duration::from_millis(10),
+                &stop,
+                &|| false
+            ),
             Wake::Stopped
         );
         handle.join().unwrap();

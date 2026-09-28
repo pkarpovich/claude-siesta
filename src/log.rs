@@ -18,6 +18,7 @@ pub enum Action {
     ParkFailed,
     Cleanup,
     TickFailed,
+    Retire,
 }
 
 impl Action {
@@ -29,6 +30,7 @@ impl Action {
             Action::ParkFailed => "park-failed",
             Action::Cleanup => "cleanup",
             Action::TickFailed => "tick-failed",
+            Action::Retire => "retire",
         }
     }
 }

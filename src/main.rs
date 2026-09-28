@@ -10,6 +10,7 @@ use claude_siesta::paths::Paths;
 use claude_siesta::placeholder;
 use claude_siesta::resume;
 use claude_siesta::rule::Mode;
+use claude_siesta::service::{self, Installed};
 use claude_siesta::status;
 
 fn main() -> ExitCode {
@@ -31,6 +32,8 @@ fn main() -> ExitCode {
         Command::Park(query) => park_now(query),
         Command::Resume(query) => resume_now(query),
         Command::Status => show_status(),
+        Command::Install => install_service(),
+        Command::Uninstall => uninstall_service(),
     }
 }
 
@@ -143,6 +146,49 @@ fn show_status() -> ExitCode {
     match status::gather(&Agterm::default(), &paths, SystemTime::now()) {
         Ok(rows) => {
             print!("{}", status::format_table(&rows));
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("claude-siesta: {error}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn install_service() -> ExitCode {
+    let Some(paths) = Paths::from_env() else {
+        eprintln!("claude-siesta: HOME is not set");
+        return ExitCode::from(1);
+    };
+    match service::install(&paths) {
+        Ok(Installed { program, agent }) => {
+            println!(
+                "loaded {} from {} running {}",
+                service::LABEL,
+                agent.display(),
+                program.display()
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("claude-siesta: {error}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn uninstall_service() -> ExitCode {
+    let Some(paths) = Paths::from_env() else {
+        eprintln!("claude-siesta: HOME is not set");
+        return ExitCode::from(1);
+    };
+    match service::uninstall(&paths) {
+        Ok(layout) => {
+            println!(
+                "unloaded {} and removed {}",
+                service::LABEL,
+                layout.agent.display()
+            );
             ExitCode::SUCCESS
         }
         Err(error) => {

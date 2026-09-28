@@ -1,7 +1,6 @@
 use std::fmt;
 
-pub const USAGE: &str =
-    "usage: claude-siesta [daemon | park <id|prefix> | resume <id|prefix> | status]";
+pub const USAGE: &str = "usage: claude-siesta [daemon | park <id|prefix> | resume <id|prefix> | status | install | uninstall]";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionQuery(pub String);
@@ -13,6 +12,8 @@ pub enum Command {
     Park(SessionQuery),
     Resume(SessionQuery),
     Status,
+    Install,
+    Uninstall,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +43,8 @@ pub fn parse_args(args: &[String]) -> Result<Command, UsageError> {
     match subcommand.as_str() {
         "daemon" => no_more(rest, Command::Daemon),
         "status" => no_more(rest, Command::Status),
+        "install" => no_more(rest, Command::Install),
+        "uninstall" => no_more(rest, Command::Uninstall),
         "park" => {
             let (query, rest) = query_argument("park", rest)?;
             no_more(rest, Command::Park(query))
@@ -99,6 +102,16 @@ mod tests {
     #[test]
     fn status() {
         assert_eq!(parse_args(&args(&["status"])), Ok(Command::Status));
+    }
+
+    #[test]
+    fn install_and_uninstall() {
+        assert_eq!(parse_args(&args(&["install"])), Ok(Command::Install));
+        assert_eq!(parse_args(&args(&["uninstall"])), Ok(Command::Uninstall));
+        assert_eq!(
+            parse_args(&args(&["install", "extra"])),
+            Err(UsageError::UnexpectedArgument("extra".to_string()))
+        );
     }
 
     #[test]
