@@ -43,6 +43,11 @@ impl Paths {
         self.state_dir().join(format!("{}.json", session.as_str()))
     }
 
+    pub fn resumed_file(&self, session: &SessionId) -> PathBuf {
+        self.state_dir()
+            .join(format!("{}.resumed", session.as_str()))
+    }
+
     pub fn log_file(&self) -> PathBuf {
         self.state_dir().join("claude-siesta.log")
     }
@@ -74,6 +79,7 @@ mod tests {
         all.push(paths.transcript_root(Profile::Work));
         all.push(paths.state_dir());
         all.push(paths.state_file(&session));
+        all.push(paths.resumed_file(&session));
         all.push(paths.log_file());
         all.push(paths.park_lock_file());
         all.push(paths.config_file());

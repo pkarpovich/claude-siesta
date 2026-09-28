@@ -85,6 +85,7 @@ pub struct Screen {
     pub name: String,
     pub entry: MapEntry,
     pub parked_at: Option<SystemTime>,
+    pub resumed_at: Option<SystemTime>,
     pub last: Option<LastAssistant>,
 }
 
@@ -147,6 +148,7 @@ pub fn run(paths: &Paths) -> ExitCode {
     let screen = Screen {
         name: session_name(&session, &entry),
         last: transcript::load_last(paths, &entry),
+        resumed_at: state::resumed_at(paths, &session),
         entry,
         parked_at,
     };
@@ -216,6 +218,7 @@ pub fn view_model(screen: &Screen, now: SystemTime, home: &Path) -> ViewModel {
         name,
         entry,
         parked_at,
+        resumed_at,
         last,
     } = screen;
     let conv = entry.conv.as_str();
@@ -229,7 +232,7 @@ pub fn view_model(screen: &Screen, now: SystemTime, home: &Path) -> ViewModel {
         name: name.clone(),
         cwd_display: cwd_display(&entry.cwd, home),
         conv_short: conv_short.to_string(),
-        idle: format_idle(transcript::idle(now, last.as_ref(), entry)),
+        idle: format_idle(transcript::idle(now, last.as_ref(), entry, *resumed_at)),
         parked_at,
         excerpt,
     }
@@ -328,6 +331,7 @@ pub fn resume_command(entry: &MapEntry, paths: &Paths) -> ResumeCommand {
 
 fn resume(paths: &Paths, session: &SessionId, command: ResumeCommand) -> ExitCode {
     let _ = state::remove(paths, session);
+    let _ = state::mark_resumed(paths, session, SystemTime::now());
     let ResumeCommand {
         program,
         args,
@@ -615,6 +619,7 @@ mod tests {
             name: String::from("siesta"),
             entry: entry(Profile::Personal),
             parked_at: Some(at(1_790_500_000)),
+            resumed_at: None,
             last: Some(LastAssistant {
                 at: at(10_000),
                 text: String::from("Done."),
@@ -641,6 +646,7 @@ mod tests {
             name: String::from("siesta"),
             entry: entry(Profile::Personal),
             parked_at: None,
+            resumed_at: None,
             last: None,
         };
         let model = view_model(&screen, at(1_000 + 45 * 60), Path::new("/elsewhere"));
@@ -659,6 +665,7 @@ mod tests {
                 ..entry(Profile::Personal)
             },
             parked_at: None,
+            resumed_at: None,
             last: None,
         };
         assert_eq!(
@@ -795,5 +802,6 @@ mod tests {
         };
         assert_eq!(resume(&paths, &session, command), ExitCode::from(1));
         assert_eq!(state::read(&paths, &session), None);
+        assert!(state::resumed_at(&paths, &session).is_some());
     }
 }

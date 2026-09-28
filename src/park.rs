@@ -159,7 +159,12 @@ pub fn run(env: &ParkEnv, window: &WindowId, session: &Session, mode: Mode) -> P
         None => None,
     };
     let idle = match &entry {
-        Some(entry) => transcript::idle(env.now, last.as_ref(), entry),
+        Some(entry) => transcript::idle(
+            env.now,
+            last.as_ref(),
+            entry,
+            state::resumed_at(env.paths, &session.id),
+        ),
         None => Duration::ZERO,
     };
     let pid_is_claude = match &entry {
@@ -710,6 +715,17 @@ mod tests {
         assert_eq!(outcome, ParkOutcome::Parked);
         let written = state::read(&paths, &SessionId::new(SESSION)).unwrap();
         assert_eq!(written.last_assistant_at, at(MAP_TS));
+    }
+
+    #[test]
+    fn recent_placeholder_resume_is_not_idle_enough() {
+        let paths = home_with_entry("recently-resumed");
+        state::mark_resumed(&paths, &SessionId::new(SESSION), at(NOW - 60)).unwrap();
+        let agterm = FakeAgterm::new(vec![vec![live()]], Failing::Nothing);
+        let processes = FakeProcesses::new(true, &agterm);
+        let outcome = park(&paths, &agterm, &processes, &live(), Mode::Daemon);
+        assert_eq!(outcome, ParkOutcome::Skipped(SkipReason::NotIdleEnough));
+        assert_eq!(agterm.calls(), Vec::new());
     }
 
     #[test]

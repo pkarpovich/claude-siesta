@@ -69,7 +69,12 @@ pub fn gather(
         let park_state = state::read(paths, &session.id);
         rows.push(StatusRow {
             state: classify(&session, park_state.as_ref()),
-            idle: transcript::idle(now, last.as_ref(), &entry),
+            idle: transcript::idle(
+                now,
+                last.as_ref(),
+                &entry,
+                state::resumed_at(paths, &session.id),
+            ),
             last_action: log::last_action(paths, &session.id),
             conv: entry.conv,
             name: session.name,

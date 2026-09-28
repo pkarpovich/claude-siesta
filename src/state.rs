@@ -127,7 +127,22 @@ pub fn remove(paths: &Paths, session: &SessionId) -> io::Result<()> {
     }
 }
 
+pub fn mark_resumed(paths: &Paths, session: &SessionId, at: SystemTime) -> io::Result<()> {
+    std::fs::create_dir_all(paths.state_dir())?;
+    std::fs::write(paths.resumed_file(session), unix_seconds(at).to_string())
+}
+
+pub fn resumed_at(paths: &Paths, session: &SessionId) -> Option<SystemTime> {
+    let text = std::fs::read_to_string(paths.resumed_file(session)).ok()?;
+    let seconds = text.trim().parse().ok()?;
+    Some(from_unix_seconds(seconds))
+}
+
 fn state_file_ids(paths: &Paths) -> Vec<SessionId> {
+    ids_with_suffix(paths, ".json")
+}
+
+fn ids_with_suffix(paths: &Paths, suffix: &str) -> Vec<SessionId> {
     let mut ids = Vec::new();
     let Ok(entries) = std::fs::read_dir(paths.state_dir()) else {
         return ids;
@@ -139,7 +154,7 @@ fn state_file_ids(paths: &Paths) -> Vec<SessionId> {
         if name.starts_with('.') {
             continue;
         }
-        let Some(id) = name.strip_suffix(".json") else {
+        let Some(id) = name.strip_suffix(suffix) else {
             continue;
         };
         ids.push(SessionId::new(id));
@@ -160,6 +175,12 @@ pub fn list(paths: &Paths) -> Vec<ParkState> {
 }
 
 pub fn cleanup(paths: &Paths, seen: &[SessionId]) -> Vec<SessionId> {
+    for id in ids_with_suffix(paths, ".resumed") {
+        if seen.contains(&id) {
+            continue;
+        }
+        let _ = std::fs::remove_file(paths.resumed_file(&id));
+    }
     let mut removed = Vec::new();
     for id in state_file_ids(paths) {
         if seen.contains(&id) {
@@ -332,6 +353,8 @@ mod tests {
         write(&paths, &state("BBBB")).unwrap();
         std::fs::write(paths.state_file(&SessionId::new("CCCC")), "garbage").unwrap();
         std::fs::write(paths.log_file(), "a log line\n").unwrap();
+        mark_resumed(&paths, &SessionId::new("BBBB"), SystemTime::UNIX_EPOCH).unwrap();
+        mark_resumed(&paths, &SessionId::new("DDDD"), SystemTime::UNIX_EPOCH).unwrap();
         let removed = cleanup(&paths, &[SessionId::new("bbbb")]);
         assert_eq!(
             removed,
@@ -340,7 +363,23 @@ mod tests {
         assert_eq!(read(&paths, &SessionId::new("AAAA")), None);
         assert_eq!(read(&paths, &SessionId::new("BBBB")), Some(state("BBBB")));
         assert!(paths.log_file().exists());
+        assert!(paths.resumed_file(&SessionId::new("BBBB")).exists());
+        assert!(!paths.resumed_file(&SessionId::new("DDDD")).exists());
         assert_eq!(cleanup(&paths, &[SessionId::new("BBBB")]), Vec::new());
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    #[test]
+    fn resumed_marker_round_trip() {
+        let home = temp_home("resumed");
+        let paths = Paths::from_home(home.clone());
+        let session = SessionId::new("AAAA");
+        assert_eq!(resumed_at(&paths, &session), None);
+        let at = SystemTime::UNIX_EPOCH + Duration::from_secs(1790500000);
+        mark_resumed(&paths, &session, at).unwrap();
+        assert_eq!(resumed_at(&paths, &session), Some(at));
+        std::fs::write(paths.resumed_file(&session), "garbage").unwrap();
+        assert_eq!(resumed_at(&paths, &session), None);
         std::fs::remove_dir_all(home).unwrap();
     }
 

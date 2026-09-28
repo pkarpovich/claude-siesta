@@ -150,10 +150,19 @@ pub fn read_last_bytes(path: &Path, limit: u64) -> io::Result<(Vec<u8>, TailStar
     Ok((bytes, start))
 }
 
-pub fn idle(now: SystemTime, last: Option<&LastAssistant>, map: &MapEntry) -> Duration {
+pub fn idle(
+    now: SystemTime,
+    last: Option<&LastAssistant>,
+    map: &MapEntry,
+    resumed_at: Option<SystemTime>,
+) -> Duration {
     let since = match last {
-        Some(LastAssistant { at, text: _ }) => (*at).max(map.ts),
+        Some(LastAssistant { at, text: _ }) => *at,
         None => map.ts,
+    };
+    let since = match resumed_at {
+        Some(resumed_at) => since.max(resumed_at),
+        None => since,
     };
     now.duration_since(since).unwrap_or(Duration::ZERO)
 }
@@ -278,26 +287,49 @@ mod tests {
             text: String::new(),
         };
         assert_eq!(
-            idle(at(4600), Some(&last), &entry(1000)),
+            idle(at(4600), Some(&last), &entry(1000), None),
             Duration::from_secs(600)
         );
     }
 
     #[test]
-    fn idle_from_map_ts_after_resume() {
+    fn later_map_ts_does_not_reset_idle() {
         let last = LastAssistant {
             at: at(1000),
             text: String::new(),
         };
         assert_eq!(
-            idle(at(4600), Some(&last), &entry(4000)),
+            idle(at(4600), Some(&last), &entry(4000), None),
+            Duration::from_secs(3600)
+        );
+    }
+
+    #[test]
+    fn idle_from_placeholder_resume() {
+        let last = LastAssistant {
+            at: at(1000),
+            text: String::new(),
+        };
+        assert_eq!(
+            idle(at(4600), Some(&last), &entry(0), Some(at(4000))),
             Duration::from_secs(600)
+        );
+        assert_eq!(
+            idle(at(4600), None, &entry(1000), Some(at(4000))),
+            Duration::from_secs(600)
+        );
+        assert_eq!(
+            idle(at(4600), Some(&last), &entry(0), Some(at(500))),
+            Duration::from_secs(3600)
         );
     }
 
     #[test]
     fn idle_falls_back_to_map_ts() {
-        assert_eq!(idle(at(4600), None, &entry(4000)), Duration::from_secs(600));
+        assert_eq!(
+            idle(at(4600), None, &entry(4000), None),
+            Duration::from_secs(600)
+        );
     }
 
     #[test]
@@ -306,8 +338,8 @@ mod tests {
             at: at(9000),
             text: String::new(),
         };
-        assert_eq!(idle(at(4600), Some(&last), &entry(0)), Duration::ZERO);
-        assert_eq!(idle(at(4600), None, &entry(9000)), Duration::ZERO);
+        assert_eq!(idle(at(4600), Some(&last), &entry(0), None), Duration::ZERO);
+        assert_eq!(idle(at(4600), None, &entry(9000), None), Duration::ZERO);
     }
 
     #[test]
