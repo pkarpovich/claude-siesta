@@ -1,0 +1,197 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TARGET: aarch64-apple-darwin
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: jdx/mise-action@v4
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Tag matches the crate version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          crate=$(mise exec -- cargo metadata --no-deps --format-version 1 |
+            python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')
+          if [ "$tag" != "$crate" ]; then
+            echo "tag $tag does not match Cargo.toml $crate" >&2
+            exit 1
+          fi
+
+      - run: mise run check
+
+      - run: mise exec -- cargo build --release --target "$TARGET"
+
+      - uses: apple-actions/import-codesign-certs@v7
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.MACOS_CERT_PASSWORD }}
+
+      - name: Sign
+        env:
+          TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
+        run: |
+          identity=$(security find-identity -v -p codesigning |
+            grep "Developer ID Application" | grep "($TEAM_ID)" |
+            head -n 1 | awk '{print $2}')
+          if [ -z "$identity" ]; then
+            echo "no Developer ID Application identity for team $TEAM_ID" >&2
+            exit 1
+          fi
+          mkdir -p dist
+          cp "target/$TARGET/release/claude-siesta" dist/claude-siesta
+          codesign --force --options runtime --timestamp --sign "$identity" dist/claude-siesta
+          codesign --verify --strict --verbose=2 dist/claude-siesta
+
+      - name: Package
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          (cd dist && zip -j "claude-siesta-arm64-$version.zip" claude-siesta)
+
+      - name: Notarize
+        env:
+          KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          KEY_P8: ${{ secrets.ASC_KEY_CONTENT }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          key=$(mktemp)
+          printf '%s\n' "$KEY_P8" > "$key"
+          submission=$(xcrun notarytool submit "dist/claude-siesta-arm64-$version.zip" \
+            --key "$key" --key-id "$KEY_ID" --issuer "$ISSUER_ID" \
+            --wait --timeout 30m --output-format json)
+          echo "$submission"
+          id=$(echo "$submission" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          status=$(echo "$submission" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+          if [ "$status" != "Accepted" ]; then
+            xcrun notarytool log "$id" --key "$key" --key-id "$KEY_ID" --issuer "$ISSUER_ID" >&2
+            rm -f "$key"
+            exit 1
+          fi
+          rm -f "$key"
+
+      - name: Checksums
+        run: |
+          rm dist/claude-siesta
+          cd dist && shasum -a 256 *.zip > checksums.txt && cat checksums.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/*.zip
+            dist/checksums.txt
+          generate_release_notes: true
+
+  cask:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
+      - name: Read the version and the checksum
+        id: facts
+        run: |
+          {
+            version="${GITHUB_REF_NAME#v}"
+            echo "version=$version"
+            echo "sha=$(shasum -a 256 "dist/claude-siesta-arm64-$version.zip" | cut -d' ' -f1)"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          repository: pkarpovich/homebrew-apps
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Write the cask
+        env:
+          VERSION: ${{ steps.facts.outputs.version }}
+          SHA: ${{ steps.facts.outputs.sha }}
+        run: |
+          mkdir -p tap/Casks
+          cat > tap/Casks/claude-siesta.rb <<EOF
+          cask "claude-siesta" do
+            version "${VERSION}"
+            sha256 "${SHA}"
+
+            url "https://github.com/pkarpovich/claude-siesta/releases/download/v#{version}/claude-siesta-arm64-#{version}.zip"
+            name "claude-siesta"
+            desc "Parks idle Claude Code sessions in agterm"
+            homepage "https://github.com/pkarpovich/claude-siesta"
+
+            livecheck do
+              url :url
+              strategy :github_latest
+            end
+
+            depends_on arch: :arm64
+
+            binary "claude-siesta"
+
+            zap trash: [
+              "~/.config/claude-siesta",
+              "~/.local/state/claude-siesta",
+              "~/Library/LaunchAgents/dev.pkarpovich.claude-siesta.plist",
+              "~/Library/Logs/claude-siesta",
+            ]
+
+            caveats <<~CAVEATS
+              Load the daemon once:
+
+                claude-siesta install
+
+              That writes the launchd agent dev.pkarpovich.claude-siesta and starts it.
+              Upgrades need nothing else: the daemon exits when brew replaces its
+              binary and launchd starts the new one.
+
+              claude-siesta reads the cc-map entries Claude Code hooks write under
+              ~/.local/state/agterm/cc-map and drives agterm through agtermctl.
+              Logs are at ~/Library/Logs/claude-siesta and
+              ~/.local/state/claude-siesta/claude-siesta.log.
+            CAVEATS
+          end
+          EOF
+
+      - name: Commit and push
+        working-directory: tap
+        env:
+          VERSION: ${{ steps.facts.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "claude-siesta ${VERSION}"
+          git push

@@ -155,7 +155,7 @@ Written by `park`; the placeholder sets `placeholder_pid` to its own pid on star
 
 ### Log
 
-`$HOME/.local/state/claude-siesta/claude-siesta.log`, append-only, one line per decision: RFC 3339 local time, action (`park`, `skip`, `park-failed`, `cleanup`), session id, conv id, idle in minutes, reason. Never any transcript text, never the cwd. `skip` lines are logged only for sessions whose foreground is claude (so the log is not 30 lines of "shell prompt" every tick). No rotation in v1.
+`$HOME/.local/state/claude-siesta/claude-siesta.log`, append-only, one line per decision: RFC 3339 local time, action (`start`, `park`, `skip`, `park-failed`, `cleanup`, `tick-failed`), session id, conv id, idle in minutes, reason. Never any transcript text, never the cwd. `skip` lines are logged only for sessions whose foreground is claude (so the log is not 30 lines of "shell prompt" every tick). No rotation in v1.
 
 ### Park rule (`rule::decide`)
 
@@ -233,13 +233,14 @@ One row per session in any open window that has a cc-map entry: session name (tr
 - Create: `Cargo.toml`
 - Create: `src/lib.rs`
 - Create: `src/main.rs`
+- Create: `src/cli.rs`
 - Create: `.gitignore`
 
-- [ ] `mise.toml`: `rust = { version = "1.98.1", components = "rustfmt,clippy" }`, tasks `build`, `test`, `lint` (`cargo clippy --all-targets -- -D warnings`), `fmt`, `check` (fmt check, clippy, test) in that order
-- [ ] `Cargo.toml`: package `claude-siesta`, edition 2024, `rust-version = "1.98"`, dependencies `ratatui = "0.30.2"`, `crossterm = "0.29"`, `serde = { version = "1", features = ["derive"] }`, `serde_json = "1"`, `toml = "1.1"`, `nix = { version = "0.31", features = ["signal", "process"] }`; `[profile.release]` with `strip = true`, `lto = true`, `opt-level = "s"` for a small binary
-- [ ] `src/main.rs` with the argument dispatch from Technical Details / CLI, every subcommand a stub returning exit 1 with "not implemented"; `.gitignore` with `/target`
-- [ ] write a test for argument dispatch (a pure `parse_args(&[String]) -> Result<Command, UsageError>` in the lib): each subcommand, a missing `<id|prefix>`, an unknown subcommand
-- [ ] `mise run check` passes
+- [x] `mise.toml`: `rust = { version = "1.98.1", components = "rustfmt,clippy" }`, tasks `build`, `test`, `lint` (`cargo clippy --all-targets -- -D warnings`), `fmt`, `check` (fmt check, clippy, test) in that order
+- [x] `Cargo.toml`: package `claude-siesta`, edition 2024, `rust-version = "1.98"`, dependencies `ratatui = "0.30.2"`, `crossterm = "0.29"`, `serde = { version = "1", features = ["derive"] }`, `serde_json = "1"`, `toml = "1.1"`, `nix = { version = "0.31", features = ["signal", "process"] }`; `[profile.release]` with `strip = true`, `lto = true`, `opt-level = "s"` for a small binary
+- [x] `src/main.rs` with the argument dispatch from Technical Details / CLI, every subcommand a stub returning exit 1 with "not implemented"; `.gitignore` with `/target`
+- [x] write a test for argument dispatch (a pure `parse_args(&[String]) -> Result<Command, UsageError>` in the lib, `src/cli.rs`; an extra argument is also a usage error): each subcommand, a missing `<id|prefix>`, an unknown subcommand
+- [x] `mise run check` passes
 
 ### Task 2: Spike the three unverified runtime behaviours inside agterm
 
@@ -249,36 +250,37 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Create: `examples/spike.rs`
 - Create: `docs/spike-results.md`
 
-- [ ] `examples/spike.rs`: a minimal ratatui screen with raw mode, alternate screen and mouse capture; prints the last event it received; SIGUSR1 handler setting an atomic flag; on Enter, SIGUSR1 or a click it restores the terminal and `exec`s a program given as argv (e.g. `claude --resume <conv>` of a throwaway conversation, or `bash -c 'echo exec-ok; sleep 5'`)
-- [ ] run it in an agterm pane and record in `docs/spike-results.md`: does a mouse click arrive as a crossterm mouse down event; does `kill -USR1 <pid>` from another shell resume; after `exec` into claude, is the terminal clean (no mouse escape garbage, no alternate-screen leftovers) and does agterm's `tree --json` report the new `foreground` argv; does the pane return to the fish prompt when the exec'd program exits
-- [ ] measure the spike's RSS with `ps -o rss= -p <pid>` and record it
-- [ ] if any of the four behaviours fails, add a ⚠️ note here with the observed behaviour and adjust Task 11 before continuing
-- [ ] `mise run check` passes (the example must build and lint clean)
+- [x] `examples/spike.rs`: a minimal ratatui screen with raw mode, alternate screen and mouse capture; prints the last event it received; SIGUSR1 handler setting an atomic flag; on Enter, SIGUSR1 or a click it restores the terminal and `exec`s a program given as argv (e.g. `claude --resume <conv>` of a throwaway conversation, or `bash -c 'echo exec-ok; sleep 5'`)
+- [x] run it in an agterm pane and record in `docs/spike-results.md`: does a mouse click arrive as a crossterm mouse down event; does `kill -USR1 <pid>` from another shell resume; after `exec` into claude, is the terminal clean (no mouse escape garbage, no alternate-screen leftovers) and does agterm's `tree --json` report the new `foreground` argv; does the pane return to the fish prompt when the exec'd program exits (run in a throwaway background session driven by agtermctl; the mouse check used an SGR click injected with `session type`, and a physical GUI click is left to the Post-Completion manual check)
+- [x] measure the spike's RSS with `ps -o rss= -p <pid>` and record it (2944 KB, release build)
+- [x] if any of the four behaviours fails, add a ⚠️ note here with the observed behaviour and adjust Task 11 before continuing (none failed; a claude exec'd by bare name still reports an absolute `foreground[0]`, so rule check 1 holds)
+- [x] `mise run check` passes (the example must build and lint clean)
 
 ### Task 3: Paths, config and duration parsing
 
 **Files:**
 - Create: `src/paths.rs`
 - Create: `src/config.rs`
+- Create: `src/ccmap.rs` (only `SessionId` and `Profile`, which `Paths` needs; Task 4 adds the rest)
 - Modify: `src/lib.rs`
 
-- [ ] `src/paths.rs`: a `Paths` struct built from a home directory (`Paths::from_home(PathBuf)`, plus `Paths::from_env()` reading `HOME`) exposing the cc-map dir, the transcript root for a `Profile`, the state dir, the state file for a `SessionId`, the log file and the config file, all from the External contracts / Technical Details sections
-- [ ] `src/config.rs`: `Config { park_after: Duration, poll_interval: Duration }` with defaults 2 h / 10 m; `Config::parse(&str) -> Result<Config, ConfigError>` via `toml` + serde with `deny_unknown_fields`; `Config::load(&Paths)` returns defaults when the file is absent and an error when it is invalid; a `parse_duration(&str)` for `<int><s|m|h|d>`
-- [ ] write tests: defaults for an empty file, both keys set, each unit, invalid unit, zero, negative/garbage, unknown key rejected
-- [ ] write tests for `Paths` with a fake home: every path is under it; `work` maps to `.claude-work`
-- [ ] `mise run check` passes
+- [x] `src/paths.rs`: a `Paths` struct built from a home directory (`Paths::from_home(PathBuf)`, plus `Paths::from_env()` reading `HOME`) exposing the cc-map dir, the transcript root for a `Profile`, the state dir, the state file for a `SessionId`, the log file and the config file, all from the External contracts / Technical Details sections
+- [x] `src/config.rs`: `Config { park_after: Duration, poll_interval: Duration }` with defaults 2 h / 10 m; `Config::parse(&str) -> Result<Config, ConfigError>` via `toml` + serde with `deny_unknown_fields`; `Config::load(&Paths)` returns defaults when the file is absent and an error when it is invalid; a `parse_duration(&str)` for `<int><s|m|h|d>`
+- [x] write tests: defaults for an empty file, both keys set, each unit, invalid unit, zero, negative/garbage, unknown key rejected
+- [x] write tests for `Paths` with a fake home: every path is under it; `work` maps to `.claude-work`
+- [x] `mise run check` passes
 
 ### Task 4: cc-map entries
 
 **Files:**
-- Create: `src/ccmap.rs`
+- Modify: `src/ccmap.rs` (Task 3 created it with `SessionId` and `Profile`)
 - Modify: `src/lib.rs`
 
-- [ ] newtypes `SessionId` (normalized to uppercase), `ConvId`; enum `Profile { Personal, Work }` (unknown profile string -> `Personal`)
-- [ ] `MapEntry { conv: ConvId, profile: Profile, cwd: PathBuf, ts: SystemTime, pid: Option<i32> }`; `MapEntry::parse(&str) -> Result<MapEntry, CcMapError>`, tolerating unknown keys, a null or missing `pid`, a missing `cwd` (empty path); a missing `conv` is an error
-- [ ] `MapEntry::load(&Paths, &SessionId) -> Result<Option<MapEntry>, CcMapError>` (missing file = `Ok(None)`)
-- [ ] write tests with fixtures shaped exactly like the External contracts example: full entry, `pid: null`, no `pid`, extra `tsession`/`twindow`, `profile: work`, missing `conv` (error), malformed JSON (error)
-- [ ] `mise run check` passes
+- [x] newtypes `SessionId` (normalized to uppercase), `ConvId`; enum `Profile { Personal, Work }` (unknown profile string -> `Personal`)
+- [x] `MapEntry { conv: ConvId, profile: Profile, cwd: PathBuf, ts: SystemTime, pid: Option<i32> }`; `MapEntry::parse(&str) -> Result<MapEntry, CcMapError>`, tolerating unknown keys, a null or missing `pid`, a missing `cwd` (empty path); a missing `conv` is an error (an empty `conv` or a missing `ts` is also an error; a missing `profile` is `Personal`)
+- [x] `MapEntry::load(&Paths, &SessionId) -> Result<Option<MapEntry>, CcMapError>` (missing file = `Ok(None)`)
+- [x] write tests with fixtures shaped exactly like the External contracts example: full entry, `pid: null`, no `pid`, extra `tsession`/`twindow`, `profile: work`, missing `conv` (error), malformed JSON (error)
+- [x] `mise run check` passes
 
 ### Task 5: Transcript tail and idle
 
@@ -287,11 +289,11 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Create: `src/time.rs`
 - Modify: `src/lib.rs`
 
-- [ ] `src/time.rs`: `parse_rfc3339(&str) -> Option<SystemTime>` supporting fractional seconds, `Z` and `+hh:mm`/`-hh:mm`; `format_local_minute(SystemTime) -> String` (`2026-09-27 12:40`, local time via `localtime_r` from `nix::libc`, which `nix` re-exports - no separate `libc` dependency); `format_idle(Duration) -> String` (`45m`, `3h 12m`, `26h 12m`)
-- [ ] `src/transcript.rs`: `LastAssistant { at: SystemTime, text: String }`; `last_assistant(bytes: &[u8], started_mid_file: bool) -> Option<LastAssistant>` implementing the Technical Details / Idle rules (partial first line dropped, text from the last record that had text, timestamp from the last assistant record); `find_transcript(&Paths, Profile, &ConvId) -> Option<PathBuf>` globbing `projects/*/<conv>.jsonl` with `std::fs::read_dir`; `read_tail(&Path) -> io::Result<(Vec<u8>, bool)>` reading at most 400 KiB
-- [ ] `idle(now, last: Option<&LastAssistant>, map: &MapEntry) -> Duration` with the cc-map `ts` fallback and future-timestamp clamp
-- [ ] write tests: content as array with text and tool_use items, content as string, last record tool-only (text from the earlier one), no assistant records, a partial first line when mid-file, malformed lines interleaved, `+02:00` offset timestamp, future timestamp -> zero idle, `find_transcript` in a temp dir for both profiles
-- [ ] `mise run check` passes
+- [x] `src/time.rs`: `parse_rfc3339(&str) -> Option<SystemTime>` supporting fractional seconds, `Z` and `+hh:mm`/`-hh:mm`; `format_local_minute(SystemTime) -> String` (`2026-09-27 12:40`, local time via `localtime_r` from `nix::libc`, which `nix` re-exports - no separate `libc` dependency); `format_idle(Duration) -> String` (`45m`, `3h 12m`, `26h 12m`)
+- [x] `src/transcript.rs`: `LastAssistant { at: SystemTime, text: String }`; `last_assistant(bytes: &[u8], start: TailStart) -> Option<LastAssistant>` (`TailStart { FileStart, MidFile }` instead of a bool, per the enum-over-bool rule) implementing the Technical Details / Idle rules (partial first line dropped, text from the last record that had text, timestamp from the last assistant record); `find_transcript(&Paths, Profile, &ConvId) -> Option<PathBuf>` globbing `projects/*/<conv>.jsonl` with `std::fs::read_dir`; `read_tail(&Path) -> io::Result<(Vec<u8>, TailStart)>` reading at most 400 KiB
+- [x] `idle(now, last: Option<&LastAssistant>, map: &MapEntry) -> Duration` with the cc-map `ts` fallback and future-timestamp clamp
+- [x] write tests: content as array with text and tool_use items, content as string, last record tool-only (text from the earlier one), no assistant records, a partial first line when mid-file, malformed lines interleaved, `+02:00` offset timestamp, future timestamp -> zero idle, `find_transcript` in a temp dir for both profiles
+- [x] `mise run check` passes
 
 ### Task 6: agterm tree model and parsing
 
@@ -301,12 +303,12 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Create: `tests/fixtures/tree.json`
 - Modify: `src/lib.rs`
 
-- [ ] `WindowId` newtype; `Window { id, open }`; `Session { id: SessionId, name, active, flagged, foreground: Vec<String>, status: AgentStatus, restore_command: Option<String> }` with `AgentStatus { Idle, Active, Completed, Blocked }` (absent -> `Idle`, unknown string -> `Idle`); serde with defaults so unknown and missing fields never fail
-- [ ] `parse_windows(&str) -> Result<Vec<Window>, TreeError>` and `parse_tree(&str) -> Result<Vec<Session>, TreeError>` flattening `result.tree.workspaces[].sessions[]`; `ok: false` in the response is an error carrying the response's message
-- [ ] `Session::runs_claude()` (`foreground[0]` ends with `/claude`) and `Session::runs_placeholder()` (ends with `claude-siesta`)
-- [ ] fixtures: a trimmed real `window list` response and a `tree` response with one live claude session, one at a shell prompt (no `foreground`), one flagged, one selected, one `status: active`, one running `claude-siesta`, one with `foreground` of `vim`, plus an extra unknown field on each
-- [ ] write tests over the fixtures: count, each field, `runs_claude`/`runs_placeholder`, `ok: false` error, malformed JSON error
-- [ ] `mise run check` passes
+- [x] `WindowId` newtype; `Window { id, open }`; `Session { id: SessionId, name, active, flagged, foreground: Vec<String>, status: AgentStatus, restore_command: Option<String> }` with `AgentStatus { Idle, Active, Completed, Blocked }` (absent -> `Idle`, unknown string -> `Idle`); serde with defaults so unknown and missing fields never fail
+- [x] `parse_windows(&str) -> Result<Vec<Window>, TreeError>` and `parse_tree(&str) -> Result<Vec<Session>, TreeError>` flattening `result.tree.workspaces[].sessions[]`; `ok: false` in the response is an error carrying the response's message
+- [x] `Session::runs_claude()` (`foreground[0]` ends with `/claude`) and `Session::runs_placeholder()` (ends with `claude-siesta`)
+- [x] fixtures: a trimmed real `window list` response and a `tree` response with one live claude session, one at a shell prompt (no `foreground`), one flagged, one selected, one `status: active`, one running `claude-siesta`, one with `foreground` of `vim`, plus an extra unknown field on each
+- [x] write tests over the fixtures: count, each field, `runs_claude`/`runs_placeholder`, `ok: false` error, malformed JSON error
+- [x] `mise run check` passes
 
 ### Task 7: Park rule
 
@@ -314,10 +316,10 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Create: `src/rule.rs`
 - Modify: `src/lib.rs`
 
-- [ ] `Mode { Daemon, Manual }`, `Decision { Park, Skip(SkipReason) }`, `SkipReason { NotClaude, NotMapped, PidNotClaude, AgentWorking, Flagged, Selected, NotIdleEnough }`
-- [ ] `RuleInput { session: &Session, entry: Option<&MapEntry>, pid_is_claude: bool, idle: Duration, park_after: Duration, mode: Mode }` and `decide(&RuleInput) -> Decision` in the exact order of Technical Details / Park rule
-- [ ] write a table test: one row per `SkipReason` (each failing exactly that check), the all-pass `Park` row, Manual mode parking a selected session and a session idle 1 minute, Manual mode still refusing flagged / agent working / not claude / not mapped, idle exactly equal to `park_after` parks
-- [ ] `mise run check` passes
+- [x] `Mode { Daemon, Manual }`, `Decision { Park, Skip(SkipReason) }`, `SkipReason { NotClaude, NotMapped, PidNotClaude, AgentWorking, Flagged, Selected, NotIdleEnough }`
+- [x] `RuleInput { session: &Session, entry: Option<&MapEntry>, pid_is_claude: bool, idle: Duration, park_after: Duration, mode: Mode }` and `decide(&RuleInput) -> Decision` in the exact order of Technical Details / Park rule
+- [x] write a table test: one row per `SkipReason` (each failing exactly that check), the all-pass `Park` row, Manual mode parking a selected session and a session idle 1 minute, Manual mode still refusing flagged / agent working / not claude / not mapped, idle exactly equal to `park_after` parks
+- [x] `mise run check` passes
 
 ### Task 8: State file and log
 
@@ -326,10 +328,10 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Create: `src/log.rs`
 - Modify: `src/lib.rs`
 
-- [ ] `src/state.rs`: `ParkState` with the fields of Technical Details / State file (serde); `write(&Paths, &ParkState)` atomic via temp file + rename in the state dir (create the dir if missing); `read(&Paths, &SessionId) -> Option<ParkState>` (unreadable = `None`); `set_placeholder_pid`; `remove`; `list(&Paths) -> Vec<ParkState>`; `cleanup(&Paths, seen: &[SessionId]) -> Vec<SessionId>` removing files for unseen ids
-- [ ] `src/log.rs`: `Action { Start, Park, Skip, ParkFailed, Cleanup }` and `append(&Paths, LogLine)` writing one line per the Technical Details / Log format; a pure `format_line(&LogLine, SystemTime) -> String` used by `append`; `last_action(&Paths, &SessionId) -> Option<String>` for `status` (reads the log's last 64 KiB)
-- [ ] write tests in a temp dir: write/read round trip, overwrite, corrupt file reads as `None`, `set_placeholder_pid` keeps other fields, `cleanup` removes only unseen ids, `list`; `format_line` never includes anything but the documented fields; `last_action` picks the newest line for the id
-- [ ] `mise run check` passes
+- [x] `src/state.rs`: `ParkState` with the fields of Technical Details / State file (serde); `write(&Paths, &ParkState)` atomic via temp file + rename in the state dir (create the dir if missing); `read(&Paths, &SessionId) -> Option<ParkState>` (unreadable = `None`); `set_placeholder_pid`; `remove`; `list(&Paths) -> Vec<ParkState>`; `cleanup(&Paths, seen: &[SessionId]) -> Vec<SessionId>` removing files for unseen ids
+- [x] `src/log.rs`: `Action { Start, Park, Skip, ParkFailed, Cleanup }` and `append(&Paths, LogLine)` writing one line per the Technical Details / Log format; a pure `format_line(&LogLine, SystemTime) -> String` used by `append`; `last_action(&Paths, &SessionId) -> Option<String>` for `status` (reads the log's last 64 KiB)
+- [x] write tests in a temp dir: write/read round trip, overwrite, corrupt file reads as `None`, `set_placeholder_pid` keeps other fields, `cleanup` removes only unseen ids, `list`; `format_line` never includes anything but the documented fields; `last_action` picks the newest line for the id
+- [x] `mise run check` passes
 
 ### Task 9: agtermctl wrapper and the park sequence
 
@@ -338,12 +340,12 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Create: `src/park.rs`
 - Modify: `src/lib.rs`
 
-- [ ] `src/agterm.rs`: `Agterm { bin: PathBuf }` with `Agterm::default()` using `/Applications/agterm.app/Contents/MacOS/agtermctl`; methods `windows()`, `tree(&WindowId)`, `restore(&WindowId, &SessionId, &str)`, `type_text(&WindowId, &SessionId, &str)` (stdin, no `--select`); every call passes `--json`, checks the exit status and `ok`, and returns the stderr/message on failure; `all_sessions() -> Result<Vec<(WindowId, Session)>, AgtermError>` over open windows; `resolve_prefix(&str)` per Technical Details / CLI
-- [ ] `src/park.rs`: a `ParkEnv` struct holding `&Agterm`, `&Paths`, `&Config`, `now` (keeps signatures under the parameter budget); `pid_is_claude(i32) -> bool` via `nix::sys::signal::kill(pid, None)` + `ps -o comm=`; `terminate(i32)` (SIGTERM, 5 s poll, SIGKILL); `run(&ParkEnv, &WindowId, &Session, Mode) -> ParkOutcome` implementing the seven steps of Technical Details / Park sequence and logging each outcome
-- [ ] make the `tree` re-poll and the kill poll take their interval and attempt counts from constants, and structure `run` so the decision (`rule::decide`) and the step ordering are exercised through a test double: a small trait `AgtermOps` implemented by `Agterm` and by a recording fake in tests
-- [ ] write tests with the fake: a `Skip` makes no calls; the happy path calls restore then type in that order with the exact arguments (` claude-siesta\n`, no `--select`); a foreground that never clears makes no restore/type call and no state file; a restore failure logs `park-failed` and does not type
-- [ ] write a test for `terminate` against a real child (`sleep 60` spawned by the test): it is gone afterwards; a child that ignores SIGTERM (`bash -c 'trap "" TERM; sleep 60'`) is SIGKILLed
-- [ ] `mise run check` passes
+- [x] `src/agterm.rs`: `Agterm { bin: PathBuf }` with `Agterm::default()` using `/Applications/agterm.app/Contents/MacOS/agtermctl`; methods `windows()`, `tree(&WindowId)`, `restore(&WindowId, &SessionId, &str)`, `type_text(&WindowId, &SessionId, &str)` (stdin, no `--select`); every call passes `--json`, checks the exit status and `ok`, and returns the stderr/message on failure; `all_sessions() -> Result<Vec<(WindowId, Session)>, AgtermError>` over open windows; `resolve_prefix(&str)` per Technical Details / CLI
+- [x] `src/park.rs`: a `ParkEnv` struct holding `&Agterm`, `&Paths`, `&Config`, `now` (keeps signatures under the parameter budget); `pid_is_claude(i32) -> bool` via `nix::sys::signal::kill(pid, None)` + `ps -o comm=`; `terminate(i32)` (SIGTERM, 5 s poll, SIGKILL); `run(&ParkEnv, &WindowId, &Session, Mode) -> ParkOutcome` implementing the seven steps of Technical Details / Park sequence and logging each outcome
+- [x] make the `tree` re-poll and the kill poll take their interval and attempt counts from constants, and structure `run` so the decision (`rule::decide`) and the step ordering are exercised through a test double: a small trait `AgtermOps` implemented by `Agterm` and by a recording fake in tests (plus a `ProcessOps` trait for `is_claude`/`terminate` so the fake never signals real pids; `ParkEnv` also carries the foreground `Poll` so tests run it with a zero interval; `all_sessions`/`resolve_prefix` are provided methods on `AgtermOps`)
+- [x] write tests with the fake: a `Skip` makes no calls; the happy path calls restore then type in that order with the exact arguments (` claude-siesta\n`, no `--select`); a foreground that never clears makes no restore/type call and no state file; a restore failure logs `park-failed` and does not type
+- [x] write a test for `terminate` against a real child (`sleep 60` spawned by the test): it is gone afterwards; a child that ignores SIGTERM (`bash -c 'trap "" TERM; sleep 60'`) is SIGKILLed
+- [x] `mise run check` passes
 
 ### Task 10: Daemon loop and the park subcommand
 
@@ -352,11 +354,11 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Modify: `src/main.rs`
 - Modify: `src/lib.rs`
 
-- [ ] `src/daemon.rs`: `run(&Paths, Config) -> ExitCode` per Technical Details / Daemon: start log line, tick, cleanup of state files, interruptible sleep; SIGTERM/SIGINT set an atomic flag checked every second
-- [ ] `tick(&ParkEnv) -> TickReport` (parked / skipped / failed counts) separate from the loop so it is callable from a test with the fake `AgtermOps`
-- [ ] wire `claude-siesta daemon` and `claude-siesta park <id|prefix>` (Manual mode, prints the outcome, exit 0 on park, 1 otherwise) in `src/main.rs`
-- [ ] write tests for `tick` with the fake: two windows, one parkable session and several skip cases -> exactly one park, state files of vanished sessions removed, an agterm failure ends the tick without panicking
-- [ ] `mise run check` passes
+- [x] `src/daemon.rs`: `run(&Paths, Config) -> ExitCode` per Technical Details / Daemon: start log line, tick, cleanup of state files, interruptible sleep; SIGTERM/SIGINT set an atomic flag checked every second
+- [x] `tick(&ParkEnv) -> TickReport` (parked / skipped / failed counts, plus the agterm error when the tick ended early) separate from the loop so it is callable from a test with the fake `AgtermOps`; the one log line for a failed tick uses a new `Action::TickFailed` (`tick-failed`)
+- [x] wire `claude-siesta daemon` and `claude-siesta park <id|prefix>` (Manual mode, prints the outcome, exit 0 on park, 1 otherwise) in `src/main.rs`
+- [x] write tests for `tick` with the fake: two windows, one parkable session and several skip cases -> exactly one park, state files of vanished sessions removed, an agterm failure ends the tick without panicking
+- [x] `mise run check` passes
 
 ### Task 11: Placeholder TUI
 
@@ -366,23 +368,25 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Modify: `src/main.rs`
 - Modify: `src/lib.rs`
 
-- [ ] `src/placeholder/view.rs`: a pure `render(frame, &ViewModel)` and `ViewModel { name, cwd_display, conv_short, idle, parked_at: Option<String>, excerpt: Vec<String> }` per Technical Details / Placeholder / Screen, including the small-pane fallback; `excerpt_lines(text, width, max_lines)` wrapping on char boundaries (multi-byte safe)
-- [ ] `src/placeholder.rs`: start checks and messages, data gathering, terminal setup and a guard that restores the terminal on drop and in a panic hook, the event loop (1 s poll, minute redraw, resize), SIGUSR1 flag, key and mouse handling, `q`/`Esc` exit, the resume `exec` with the environment from Technical Details / Placeholder / Resume; write `placeholder_pid` into the state file on start
-- [ ] apply whatever `docs/spike-results.md` found (Task 2)
-- [ ] write tests: `render` into a ratatui `TestBackend` for a normal and a tiny pane (assert the title, idle and footer text are present, the excerpt is cut at 10 lines), `excerpt_lines` with Cyrillic text and long words, a pure `resume_command(&MapEntry, &Paths) -> (program, args, env)` for both profiles, key/mouse -> action mapping as a pure function
-- [ ] `mise run check` passes
+- [x] `src/placeholder/view.rs`: a pure `render(frame, &ViewModel)` and `ViewModel { name, cwd_display, conv_short, idle, parked_at: Option<String>, excerpt: String }` per Technical Details / Placeholder / Screen, including the small-pane fallback; `excerpt_lines(text, width, max_lines)` wrapping on char boundaries (multi-byte safe) (`excerpt` holds the raw text and `render` wraps it to the block's inner width, since the width is only known at draw time; a pane too short for 10 excerpt lines shows fewer before falling back to title + footer)
+- [x] `src/placeholder.rs`: start checks and messages, data gathering, terminal setup and a guard that restores the terminal on drop and in a panic hook, the event loop (1 s poll, minute redraw, resize), SIGUSR1 flag, key and mouse handling, `q`/`Esc` exit, the resume `exec` with the environment from Technical Details / Placeholder / Resume; write `placeholder_pid` into the state file on start (the exec also runs in the cc-map `cwd` when it is an existing dir, so `--resume` finds the project; the placeholder does not load `config.toml`, so a broken config never blocks a resume)
+- [x] apply whatever `docs/spike-results.md` found (Task 2) (restore order `DisableMouseCapture`, `LeaveAlternateScreen`, then raw mode off, plus a cursor `Show`)
+- [x] write tests: `render` into a ratatui `TestBackend` for a normal and a tiny pane (assert the title, idle and footer text are present, the excerpt is cut at 10 lines), `excerpt_lines` with Cyrillic text and long words, a pure `resume_command(&MapEntry, &Paths) -> (program, args, env)` for both profiles, key/mouse -> action mapping as a pure function
+- [x] `mise run check` passes
 
 ### Task 12: resume and status subcommands
 
 **Files:**
 - Create: `src/status.rs`
+- Create: `src/resume.rs`
 - Modify: `src/main.rs`
 - Modify: `src/lib.rs`
+- Modify: `src/park.rs`, `src/transcript.rs`, `src/placeholder.rs` (shared helpers)
 
-- [ ] `claude-siesta resume <id|prefix>`: resolve the session, read its state file, SIGUSR1 the `placeholder_pid` after checking it is alive and its command ends with `claude-siesta`; clear errors for no state file / no pid / dead pid; exit codes 0/1
-- [ ] `src/status.rs`: gather rows per Technical Details / Status and a pure `format_table(&[StatusRow]) -> String` with aligned columns
-- [ ] write tests for `format_table` (alignment, truncation of long names, empty input prints a header only) and for the state column classification
-- [ ] `mise run check` passes
+- [x] `claude-siesta resume <id|prefix>`: resolve the session, read its state file, SIGUSR1 the `placeholder_pid` after checking it is alive and its command ends with `claude-siesta`; clear errors for no state file / no pid / dead pid; exit codes 0/1 (`resume::signal_placeholder` in `src/resume.rs`, a live pid running something else is a fourth error; `park::process_command` is split out of `pid_is_claude` for the `ps -o comm=` check)
+- [x] `src/status.rs`: gather rows per Technical Details / Status and a pure `format_table(&[StatusRow]) -> String` with aligned columns (`gather` takes `&dyn AgtermOps`; `transcript::load_last` replaces the identical private helpers in `park` and `placeholder`)
+- [x] write tests for `format_table` (alignment, truncation of long names, empty input prints a header only) and for the state column classification (plus `gather` with a fake agterm, and every `signal_placeholder` error path and a real SIGUSR1 delivery against spawned children)
+- [x] `mise run check` passes
 
 ### Task 13: launchd agent and install tasks
 
@@ -390,17 +394,17 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Create: `launchd/dev.pkarpovich.claude-siesta.plist`
 - Modify: `mise.toml`
 
-- [ ] plist template per Technical Details / launchd with a `__HOME__` placeholder
-- [ ] mise tasks `install` and `uninstall` per Technical Details / launchd; `install` is idempotent (bootout of a loaded agent first)
-- [ ] validate the template with `plutil -lint` after substitution into a temp path inside `target/` (add this as part of the `check` task)
-- [ ] `mise run check` passes
+- [x] plist template per Technical Details / launchd with a `__HOME__` placeholder
+- [x] mise tasks `install` and `uninstall` per Technical Details / launchd; `install` is idempotent (bootout of a loaded agent first) (the binary is copied to a temp name and renamed into place so running placeholders keep their inode; install/uninstall are not run here, that is Post-Completion)
+- [x] validate the template with `plutil -lint` after substitution into a temp path inside `target/` (add this as part of the `check` task) (a `lint-plist` task, called as the last step of `check`; a broken template fails it)
+- [x] `mise run check` passes
 
 ### Task 14: Verify acceptance criteria
 
-- [ ] every requirement in Overview and Technical Details is implemented; every non-goal is still a non-goal (no `session status`, `background`, `context` or `flag` call anywhere: `grep -rn '"status"\|"background"\|"context"\|"flag"' src/agterm.rs` finds none)
-- [ ] no path in `src/` is hardcoded to a user home (`grep -rn '/Users/' src/` finds nothing)
-- [ ] `mise run check` passes; `cargo build --release` passes and the release binary is under 5 MB
-- [ ] every `SkipReason` and every placeholder exit path is covered by a test
+- [x] every requirement in Overview and Technical Details is implemented; every non-goal is still a non-goal (no `session status`, `background`, `context` or `flag` call anywhere: `grep -rn '"status"\|"background"\|"context"\|"flag"' src/agterm.rs` finds none)
+- [x] no path in `src/` is hardcoded to a user home (`grep -rn '/Users/' src/` finds nothing) (the test fixtures used `/Users/x`; they now use `/home/x`, including `tests/fixtures/tree.json`)
+- [x] `mise run check` passes; `cargo build --release` passes and the release binary is under 5 MB (release binary 819616 bytes)
+- [x] every `SkipReason` and every placeholder exit path is covered by a test (`resume` now takes the `ResumeCommand` so a test can exec a missing binary in a re-executed child test process: the state file is removed and the exit code is 1; a raised SIGUSR1 sets the resume flag; a terminal I/O error and a `sigaction` failure map straight to exit 1 and are not unit-testable)
 
 ### Task 15: [Final] Documentation
 
@@ -408,9 +412,9 @@ Nothing below has been run inside agterm yet; the rest of the placeholder design
 - Create: `README.md`
 - Create: `CLAUDE.md`
 
-- [ ] `README.md`: what claude-siesta does and why (the memory numbers), the commands, the config keys, the files it reads and writes, install/uninstall, how to resume (Enter/Space/click/`claude-siesta resume`), and the dependency on Pavel's cc-map hooks; one line per paragraph, no hard wraps
-- [ ] `CLAUDE.md` in the moji/nikki style: code rules only (pure modules vs IO shells, tests inline, no async, no sidebar marker and why, the agtermctl absolute path and `--window` rule, never `--select`, terminal-restore guard on every exit path); point to this plan for the decisions
-- [ ] move this plan to `docs/plans/completed/`
+- [x] `README.md`: what claude-siesta does and why (the memory numbers), the commands, the config keys, the files it reads and writes, install/uninstall, how to resume (Enter/Space/click/`claude-siesta resume`), and the dependency on Pavel's cc-map hooks; one line per paragraph, no hard wraps
+- [x] `CLAUDE.md` in the moji/nikki style: code rules only (pure modules vs IO shells, tests inline, no async, no sidebar marker and why, the agtermctl absolute path and `--window` rule, never `--select`, terminal-restore guard on every exit path); point to this plan for the decisions
+- [x] move this plan to `docs/plans/completed/`
 
 ## Post-Completion
 
