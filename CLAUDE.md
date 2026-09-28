@@ -6,7 +6,7 @@
 
 `paths`, `cli`, `config`, `ccmap`, `time`, `transcript`, `tree`, `rule` and `placeholder/view` take bytes, strings, `SystemTime` and parsed structs, and return decisions or values. They never spawn a process, read the clock or touch the filesystem beyond what they are handed; a function that reads a file does only that and hands the bytes to a pure one. That split is what makes the park rule, the idle computation and the tree parsing testable with fixtures and a fixed `now`.
 
-`agterm`, `park`, `daemon`, `placeholder`, `resume`, `status`, `state` and `log` do the IO. Anything they call on agterm or on another process goes through the `AgtermOps` and `ProcessOps` traits, so a test drives the park sequence and the daemon tick with a recording fake and never signals a real pid or talks to a real agterm. A new agtermctl call is a new method on `AgtermOps`, implemented by `Agterm` and by the fake.
+`agterm`, `park`, `daemon`, `placeholder`, `resume`, `status`, `state` and `log` do the IO. `park`, `daemon` and `status` reach agterm through `&dyn AgtermOps`, and `park` reaches processes through `ProcessOps`, so a test drives the park sequence and the daemon tick with a recording fake and never signals a real pid or talks to a real agterm. `resume` and the placeholder's session-name lookup call `kill`, `ps` and `Agterm` directly and are tested against spawned children. A new agtermctl call is a new method on `AgtermOps`, implemented by `Agterm` and by the `FakeAgterm` in each of the `daemon`, `park` and `status` tests.
 
 ## No async, no threads
 
@@ -34,7 +34,7 @@ The placeholder must never fail to resume because of something optional: a missi
 
 Tests go in a `#[cfg(test)] mod tests` block in the file they cover. A sibling `foo_test.rs` is not compiled unless something declares it, so it would sit unbuilt while the gate reported success. Fixtures that mirror agterm's real responses are in `tests/fixtures/`, with fake homes under `/home/x`: no path in `src/` names a real user home.
 
-A test that needs the filesystem uses its own temp dir as the home. A test that needs a process spawns its own child (`sleep`, `bash`) and signals only that.
+A test that needs the filesystem uses its own temp dir as the home. A test that needs a process spawns its own child (`sleep`, `bash`) and signals only that. A path that ends in `exec` or a process exit is tested by re-running the test binary on itself (`std::env::current_exe()` with `--exact <test path>` and a marker env var): the child runs the real path and the parent asserts on its exit status and stderr.
 
 ## Declare every module
 

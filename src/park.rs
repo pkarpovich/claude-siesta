@@ -177,14 +177,16 @@ pub fn run(env: &ParkEnv, window: &WindowId, session: &Session, mode: Mode) -> P
         }) => false,
         None => false,
     };
-    let decision = rule::decide(&RuleInput {
-        session,
-        entry: entry.as_ref(),
-        pid_is_claude,
-        idle,
-        park_after: env.config.park_after,
-        mode,
-    });
+    let decide = |session: &Session| {
+        rule::decide(&RuleInput {
+            session,
+            entry: entry.as_ref(),
+            pid_is_claude,
+            idle,
+            park_after: env.config.park_after,
+            mode,
+        })
+    };
     let line = |action: Action, reason: String| LogLine {
         action,
         session: Some(session.id.clone()),
@@ -192,12 +194,26 @@ pub fn run(env: &ParkEnv, window: &WindowId, session: &Session, mode: Mode) -> P
         idle: Some(idle),
         reason,
     };
-    match decision {
+    match decide(session) {
         Decision::Park => {}
         Decision::Skip(reason) => {
             if session.runs_claude() {
                 write_log(env.paths, &line(Action::Skip, reason.as_str().to_string()));
             }
+            return ParkOutcome::Skipped(reason);
+        }
+    }
+    let fresh = match find_session(env, window, &session.id) {
+        Ok(fresh) => fresh,
+        Err(failure) => {
+            write_log(env.paths, &line(Action::ParkFailed, failure.reason()));
+            return ParkOutcome::Failed(failure);
+        }
+    };
+    match decide(&fresh) {
+        Decision::Park => {}
+        Decision::Skip(reason) => {
+            write_log(env.paths, &line(Action::Skip, reason.as_str().to_string()));
             return ParkOutcome::Skipped(reason);
         }
     }
@@ -278,29 +294,29 @@ fn wait_for_shell(env: &ParkEnv, window: &WindowId, id: &SessionId) -> Result<()
         if attempt > 0 {
             sleep(interval);
         }
-        let sessions = env.agterm.tree(window).map_err(|error| ParkFailure {
-            step: ParkStep::Tree,
-            detail: Some(error.to_string()),
-        })?;
-        let mut found = None;
-        for session in sessions {
-            if &session.id == id {
-                found = Some(session);
-                break;
-            }
-        }
-        let Some(session) = found else {
-            return Err(ParkFailure {
-                step: ParkStep::SessionGone,
-                detail: None,
-            });
-        };
+        let session = find_session(env, window, id)?;
         if session.foreground.is_empty() {
             return Ok(());
         }
     }
     Err(ParkFailure {
         step: ParkStep::ForegroundBusy,
+        detail: None,
+    })
+}
+
+fn find_session(env: &ParkEnv, window: &WindowId, id: &SessionId) -> Result<Session, ParkFailure> {
+    let sessions = env.agterm.tree(window).map_err(|error| ParkFailure {
+        step: ParkStep::Tree,
+        detail: Some(error.to_string()),
+    })?;
+    for session in sessions {
+        if &session.id == id {
+            return Ok(session);
+        }
+    }
+    Err(ParkFailure {
+        step: ParkStep::SessionGone,
         detail: None,
     })
 }
@@ -322,6 +338,7 @@ mod tests {
     use std::os::unix::process::ExitStatusExt;
     use std::path::PathBuf;
     use std::process::Stdio;
+    use std::rc::Rc;
 
     use super::*;
     use crate::agterm::AgtermError;
@@ -341,6 +358,7 @@ mod tests {
         Tree(String),
         Restore(String, String, String),
         Type(String, String, String),
+        Terminate(i32),
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -353,7 +371,7 @@ mod tests {
     struct FakeAgterm {
         trees: RefCell<Vec<Vec<Session>>>,
         failing: Failing,
-        calls: RefCell<Vec<Call>>,
+        calls: Rc<RefCell<Vec<Call>>>,
     }
 
     impl FakeAgterm {
@@ -361,7 +379,7 @@ mod tests {
             FakeAgterm {
                 trees: RefCell::new(trees),
                 failing,
-                calls: RefCell::new(Vec::new()),
+                calls: Rc::new(RefCell::new(Vec::new())),
             }
         }
 
@@ -430,14 +448,14 @@ mod tests {
 
     struct FakeProcesses {
         claude: bool,
-        terminated: RefCell<Vec<i32>>,
+        calls: Rc<RefCell<Vec<Call>>>,
     }
 
     impl FakeProcesses {
-        fn new(claude: bool) -> FakeProcesses {
+        fn new(claude: bool, agterm: &FakeAgterm) -> FakeProcesses {
             FakeProcesses {
                 claude,
-                terminated: RefCell::new(Vec::new()),
+                calls: Rc::clone(&agterm.calls),
             }
         }
     }
@@ -448,7 +466,7 @@ mod tests {
         }
 
         fn terminate(&self, pid: i32) {
-            self.terminated.borrow_mut().push(pid);
+            self.calls.borrow_mut().push(Call::Terminate(pid));
         }
     }
 
@@ -528,11 +546,10 @@ mod tests {
     fn skip_at_shell_prompt_makes_no_calls_and_no_log() {
         let paths = home_with_entry("skip-shell");
         let agterm = FakeAgterm::new(vec![vec![shell()]], Failing::Nothing);
-        let processes = FakeProcesses::new(true);
+        let processes = FakeProcesses::new(true, &agterm);
         let outcome = park(&paths, &agterm, &processes, &shell(), Mode::Daemon);
         assert_eq!(outcome, ParkOutcome::Skipped(SkipReason::NotClaude));
         assert_eq!(agterm.calls(), Vec::new());
-        assert_eq!(processes.terminated.borrow().clone(), Vec::<i32>::new());
         assert!(!paths.state_file(&SessionId::new(SESSION)).exists());
         assert!(!paths.log_file().exists());
     }
@@ -541,12 +558,11 @@ mod tests {
     fn skip_of_live_claude_logs_skip_without_side_effects() {
         let paths = home_with_entry("skip-selected");
         let agterm = FakeAgterm::new(vec![vec![live()]], Failing::Nothing);
-        let processes = FakeProcesses::new(true);
+        let processes = FakeProcesses::new(true, &agterm);
         let selected = session(&[CLAUDE], true);
         let outcome = park(&paths, &agterm, &processes, &selected, Mode::Daemon);
         assert_eq!(outcome, ParkOutcome::Skipped(SkipReason::Selected));
         assert_eq!(agterm.calls(), Vec::new());
-        assert_eq!(processes.terminated.borrow().clone(), Vec::<i32>::new());
         assert!(!paths.state_file(&SessionId::new(SESSION)).exists());
         let log = std::fs::read_to_string(paths.log_file()).unwrap();
         assert!(log.contains(" skip "));
@@ -557,10 +573,9 @@ mod tests {
     fn skip_when_pid_is_not_claude_does_not_terminate() {
         let paths = home_with_entry("skip-pid");
         let agterm = FakeAgterm::new(vec![vec![live()]], Failing::Nothing);
-        let processes = FakeProcesses::new(false);
+        let processes = FakeProcesses::new(false, &agterm);
         let outcome = park(&paths, &agterm, &processes, &live(), Mode::Daemon);
         assert_eq!(outcome, ParkOutcome::Skipped(SkipReason::PidNotClaude));
-        assert_eq!(processes.terminated.borrow().clone(), Vec::<i32>::new());
         assert_eq!(agterm.calls(), Vec::new());
     }
 
@@ -577,14 +592,14 @@ mod tests {
         )
         .unwrap();
         let agterm = FakeAgterm::new(vec![vec![live()], vec![shell()]], Failing::Nothing);
-        let processes = FakeProcesses::new(true);
+        let processes = FakeProcesses::new(true, &agterm);
         let outcome = park(&paths, &agterm, &processes, &live(), Mode::Daemon);
         assert_eq!(outcome, ParkOutcome::Parked);
-        assert_eq!(processes.terminated.borrow().clone(), vec![PID]);
         assert_eq!(
             agterm.calls(),
             vec![
                 Call::Tree(WINDOW.to_string()),
+                Call::Terminate(PID),
                 Call::Tree(WINDOW.to_string()),
                 Call::Restore(
                     WINDOW.to_string(),
@@ -614,14 +629,51 @@ mod tests {
             log::last_action(&paths, &SessionId::new(SESSION)),
             Some("park".to_string())
         );
+        let log = std::fs::read_to_string(paths.log_file()).unwrap();
+        assert!(!log.contains("/home/x/Projects/y"));
+        assert!(!log.contains("done"));
+    }
+
+    #[test]
+    fn session_selected_since_the_snapshot_is_not_killed() {
+        let paths = home_with_entry("recheck-selected");
+        let agterm = FakeAgterm::new(
+            vec![vec![session(&[CLAUDE, "--resume", CONV], true)]],
+            Failing::Nothing,
+        );
+        let processes = FakeProcesses::new(true, &agterm);
+        let outcome = park(&paths, &agterm, &processes, &live(), Mode::Daemon);
+        assert_eq!(outcome, ParkOutcome::Skipped(SkipReason::Selected));
+        assert_eq!(agterm.calls(), vec![Call::Tree(WINDOW.to_string())]);
+        assert!(!paths.state_file(&SessionId::new(SESSION)).exists());
+        let log = std::fs::read_to_string(paths.log_file()).unwrap();
+        assert!(log.contains(" skip "));
+        assert!(log.contains("selected"));
+    }
+
+    #[test]
+    fn tree_failure_before_the_kill_leaves_claude_running() {
+        let paths = home_with_entry("recheck-tree");
+        let agterm = FakeAgterm::new(Vec::new(), Failing::Nothing);
+        let processes = FakeProcesses::new(true, &agterm);
+        let outcome = park(&paths, &agterm, &processes, &live(), Mode::Daemon);
+        let ParkOutcome::Failed(ParkFailure { step, detail: _ }) = outcome else {
+            panic!("expected a failure, got {outcome:?}");
+        };
+        assert_eq!(step, ParkStep::Tree);
+        assert_eq!(agterm.calls(), vec![Call::Tree(WINDOW.to_string())]);
+        assert!(!paths.state_file(&SessionId::new(SESSION)).exists());
     }
 
     #[test]
     fn manual_mode_parks_selected_session_and_falls_back_to_map_ts() {
         let paths = home_with_entry("manual");
-        let agterm = FakeAgterm::new(vec![vec![shell()]], Failing::Nothing);
-        let processes = FakeProcesses::new(true);
         let selected = session(&[CLAUDE], true);
+        let agterm = FakeAgterm::new(
+            vec![vec![selected.clone()], vec![shell()]],
+            Failing::Nothing,
+        );
+        let processes = FakeProcesses::new(true, &agterm);
         let outcome = park(&paths, &agterm, &processes, &selected, Mode::Manual);
         assert_eq!(outcome, ParkOutcome::Parked);
         let written = state::read(&paths, &SessionId::new(SESSION)).unwrap();
@@ -632,7 +684,7 @@ mod tests {
     fn foreground_that_never_clears_stops_before_pinning() {
         let paths = home_with_entry("busy");
         let agterm = FakeAgterm::new(vec![vec![live()]], Failing::Nothing);
-        let processes = FakeProcesses::new(true);
+        let processes = FakeProcesses::new(true, &agterm);
         let outcome = park(&paths, &agterm, &processes, &live(), Mode::Daemon);
         assert_eq!(
             outcome,
@@ -644,6 +696,8 @@ mod tests {
         assert_eq!(
             agterm.calls(),
             vec![
+                Call::Tree(WINDOW.to_string()),
+                Call::Terminate(PID),
                 Call::Tree(WINDOW.to_string()),
                 Call::Tree(WINDOW.to_string()),
                 Call::Tree(WINDOW.to_string()),
@@ -658,8 +712,8 @@ mod tests {
     #[test]
     fn vanished_session_fails_without_pinning() {
         let paths = home_with_entry("gone");
-        let agterm = FakeAgterm::new(vec![Vec::new()], Failing::Nothing);
-        let processes = FakeProcesses::new(true);
+        let agterm = FakeAgterm::new(vec![vec![live()], Vec::new()], Failing::Nothing);
+        let processes = FakeProcesses::new(true, &agterm);
         let outcome = park(&paths, &agterm, &processes, &live(), Mode::Daemon);
         assert_eq!(
             outcome,
@@ -668,14 +722,22 @@ mod tests {
                 detail: None,
             })
         );
-        assert_eq!(agterm.calls(), vec![Call::Tree(WINDOW.to_string())]);
+        assert_eq!(
+            agterm.calls(),
+            vec![
+                Call::Tree(WINDOW.to_string()),
+                Call::Terminate(PID),
+                Call::Tree(WINDOW.to_string()),
+            ]
+        );
+        assert!(!paths.state_file(&SessionId::new(SESSION)).exists());
     }
 
     #[test]
     fn restore_failure_logs_and_does_not_type() {
         let paths = home_with_entry("restore-fails");
-        let agterm = FakeAgterm::new(vec![vec![shell()]], Failing::Restore);
-        let processes = FakeProcesses::new(true);
+        let agterm = FakeAgterm::new(vec![vec![live()], vec![shell()]], Failing::Restore);
+        let processes = FakeProcesses::new(true, &agterm);
         let outcome = park(&paths, &agterm, &processes, &live(), Mode::Daemon);
         let ParkOutcome::Failed(ParkFailure { step, detail: _ }) = outcome else {
             panic!("expected a failure, got {outcome:?}");
@@ -705,13 +767,14 @@ mod tests {
     #[test]
     fn type_failure_logs_park_failed() {
         let paths = home_with_entry("type-fails");
-        let agterm = FakeAgterm::new(vec![vec![shell()]], Failing::Type);
-        let processes = FakeProcesses::new(true);
+        let agterm = FakeAgterm::new(vec![vec![live()], vec![shell()]], Failing::Type);
+        let processes = FakeProcesses::new(true, &agterm);
         let outcome = park(&paths, &agterm, &processes, &live(), Mode::Daemon);
         let ParkOutcome::Failed(ParkFailure { step, detail: _ }) = outcome else {
             panic!("expected a failure, got {outcome:?}");
         };
         assert_eq!(step, ParkStep::Type);
+        assert!(!paths.state_file(&SessionId::new(SESSION)).exists());
         assert_eq!(
             log::last_action(&paths, &SessionId::new(SESSION)),
             Some("park-failed".to_string())
@@ -760,6 +823,23 @@ mod tests {
         terminate(pid, TEST_KILL_POLL);
         let status = reaper.join().unwrap();
         assert_eq!(status.signal(), Some(Signal::SIGKILL as i32));
+    }
+
+    #[test]
+    fn pid_is_claude_accepts_a_process_named_claude() {
+        let dir = temp_home("pid-claude");
+        let claude = dir.join("claude");
+        std::os::unix::fs::symlink("/bin/sleep", &claude).unwrap();
+        let child = std::process::Command::new(&claude)
+            .arg("60")
+            .spawn()
+            .unwrap();
+        let pid = child.id() as i32;
+        let reaper = reap_in_background(child);
+        let accepted = pid_is_claude(pid);
+        terminate(pid, TEST_KILL_POLL);
+        reaper.join().unwrap();
+        assert!(accepted);
     }
 
     #[test]

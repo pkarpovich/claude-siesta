@@ -133,14 +133,16 @@ impl Agterm {
             None => command.stdin(Stdio::null()),
         };
         let mut child = command.spawn().map_err(AgtermError::Spawn)?;
-        if let Some(text) = stdin {
-            let Some(mut pipe) = child.stdin.take() else {
-                return Err(AgtermError::Failed("no stdin pipe".to_string()));
-            };
-            pipe.write_all(text.as_bytes())
-                .map_err(AgtermError::Spawn)?;
+        let mut written = Ok(());
+        if let Some(text) = stdin
+            && let Some(mut pipe) = child.stdin.take()
+        {
+            written = pipe.write_all(text.as_bytes());
         }
         let output = child.wait_with_output().map_err(AgtermError::Spawn)?;
+        if let Err(error) = written {
+            return Err(AgtermError::Failed(format!("cannot write stdin: {error}")));
+        }
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
         if let Ok(Ack { ok: false, error }) = serde_json::from_str::<Ack>(&stdout) {
             return Err(AgtermError::Failed(
@@ -160,13 +162,8 @@ impl Agterm {
 
     fn acknowledge(&self, args: &[&str], stdin: Option<&str>) -> Result<(), AgtermError> {
         let stdout = self.call(args, stdin)?;
-        let Ack { ok, error } = serde_json::from_str(&stdout)
+        serde_json::from_str::<Ack>(&stdout)
             .map_err(|error| AgtermError::Response(error.to_string()))?;
-        if !ok {
-            return Err(AgtermError::Failed(
-                error.unwrap_or_else(|| "request failed".to_string()),
-            ));
-        }
         Ok(())
     }
 }

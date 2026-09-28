@@ -74,7 +74,7 @@ pub fn run(paths: &Paths, config: Config) -> ExitCode {
             now: SystemTime::now(),
             foreground_poll: FOREGROUND_POLL,
         };
-        tick(&env);
+        tick(&env, &STOP);
         match wait(poll_interval, STOP_CHECK, &STOP) {
             Wake::Elapsed => {}
             Wake::Stopped => return ExitCode::SUCCESS,
@@ -82,7 +82,7 @@ pub fn run(paths: &Paths, config: Config) -> ExitCode {
     }
 }
 
-pub fn tick(env: &ParkEnv) -> TickReport {
+pub fn tick(env: &ParkEnv, stop: &AtomicBool) -> TickReport {
     let mut report = TickReport::default();
     let sessions = match env.agterm.all_sessions() {
         Ok(sessions) => sessions,
@@ -104,6 +104,9 @@ pub fn tick(env: &ParkEnv) -> TickReport {
     };
     let mut seen = Vec::new();
     for (window, session) in &sessions {
+        if stop.load(Ordering::SeqCst) {
+            return report;
+        }
         seen.push(session.id.clone());
         match park::run(env, window, session, Mode::Daemon) {
             ParkOutcome::Parked => report.parked += 1,
@@ -177,6 +180,7 @@ mod tests {
     const WORKING: &str = "50000000-0000-0000-0000-000000000005";
     const FRESH: &str = "60000000-0000-0000-0000-000000000006";
     const VANISHED: &str = "70000000-0000-0000-0000-000000000007";
+    const BUSY: &str = "80000000-0000-0000-0000-000000000008";
     const NOW: u64 = 1_790_500_000;
     const DAY: u64 = 24 * 60 * 60;
     const CLAUDE: &str = "/home/x/.local/bin/claude";
@@ -347,6 +351,15 @@ mod tests {
     }
 
     fn run_tick(paths: &Paths, agterm: &FakeAgterm, processes: &FakeProcesses) -> TickReport {
+        run_tick_with_stop(paths, agterm, processes, &AtomicBool::new(false))
+    }
+
+    fn run_tick_with_stop(
+        paths: &Paths,
+        agterm: &FakeAgterm,
+        processes: &FakeProcesses,
+        stop: &AtomicBool,
+    ) -> TickReport {
         let config = Config::default();
         let env = ParkEnv {
             agterm,
@@ -359,7 +372,7 @@ mod tests {
                 attempts: 3,
             },
         };
-        tick(&env)
+        tick(&env, stop)
     }
 
     #[test]
@@ -390,7 +403,10 @@ mod tests {
         let window_b = vec![flagged, working, live(FRESH)];
         let agterm = FakeAgterm::new(
             vec![
-                (WINDOW_A, vec![window_a, window_a_after_kill]),
+                (
+                    WINDOW_A,
+                    vec![window_a.clone(), window_a, window_a_after_kill],
+                ),
                 (WINDOW_B, vec![window_b]),
             ],
             Failing::Nothing,
@@ -467,6 +483,69 @@ mod tests {
             report.agterm_error,
             Some("agtermctl failed: socket closed".to_string())
         );
+        assert_eq!(processes.terminated.borrow().clone(), Vec::<i32>::new());
+        assert!(paths.state_file(&SessionId::new(VANISHED)).exists());
+    }
+
+    #[test]
+    fn tick_continues_after_a_failed_park() {
+        let paths = temp_home("failed-park");
+        map(&paths, BUSY, 108, NOW - DAY);
+        map(&paths, PARKABLE, 101, NOW - DAY);
+        state::write(&paths, &parked_state(VANISHED)).unwrap();
+        let agterm = FakeAgterm::new(
+            vec![
+                (WINDOW_A, vec![vec![live(BUSY)]]),
+                (
+                    WINDOW_B,
+                    vec![
+                        vec![live(PARKABLE)],
+                        vec![live(PARKABLE)],
+                        vec![session(PARKABLE, &[])],
+                    ],
+                ),
+            ],
+            Failing::Nothing,
+        );
+        let processes = FakeProcesses {
+            terminated: RefCell::new(Vec::new()),
+        };
+
+        let report = run_tick(&paths, &agterm, &processes);
+
+        assert_eq!(
+            report,
+            TickReport {
+                parked: 1,
+                skipped: 0,
+                failed: 1,
+                agterm_error: None,
+            }
+        );
+        assert_eq!(processes.terminated.borrow().clone(), vec![108, 101]);
+        assert_eq!(agterm.restored.borrow().clone(), vec![PARKABLE.to_string()]);
+        assert!(!paths.state_file(&SessionId::new(VANISHED)).exists());
+    }
+
+    #[test]
+    fn stop_during_tick_parks_nothing_more_and_skips_cleanup() {
+        let paths = temp_home("stop-tick");
+        map(&paths, PARKABLE, 101, NOW - DAY);
+        state::write(&paths, &parked_state(VANISHED)).unwrap();
+        let agterm = FakeAgterm::new(
+            vec![
+                (WINDOW_A, vec![vec![live(PARKABLE)]]),
+                (WINDOW_B, vec![Vec::new()]),
+            ],
+            Failing::Nothing,
+        );
+        let processes = FakeProcesses {
+            terminated: RefCell::new(Vec::new()),
+        };
+
+        let report = run_tick_with_stop(&paths, &agterm, &processes, &AtomicBool::new(true));
+
+        assert_eq!(report, TickReport::default());
         assert_eq!(processes.terminated.borrow().clone(), Vec::<i32>::new());
         assert!(paths.state_file(&SessionId::new(VANISHED)).exists());
     }

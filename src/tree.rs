@@ -348,9 +348,18 @@ mod tests {
     }
 
     #[test]
-    fn claude_without_path_is_not_claude() {
+    fn program_named_notclaude_is_not_claude() {
         let sessions = parse_tree(
             r#"{"ok":true,"result":{"tree":{"workspaces":[{"sessions":[{"id":"a","foreground":["/usr/bin/notclaude"]}]}]}}}"#,
+        )
+        .unwrap();
+        assert!(!sessions[0].runs_claude());
+    }
+
+    #[test]
+    fn claude_without_path_is_not_claude() {
+        let sessions = parse_tree(
+            r#"{"ok":true,"result":{"tree":{"workspaces":[{"sessions":[{"id":"a","foreground":["claude"]}]}]}}}"#,
         )
         .unwrap();
         assert!(!sessions[0].runs_claude());

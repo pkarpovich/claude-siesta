@@ -1,5 +1,4 @@
 use std::io;
-use std::path::Path;
 use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
@@ -87,11 +86,7 @@ pub fn write(paths: &Paths, state: &ParkState) -> io::Result<()> {
 }
 
 pub fn read(paths: &Paths, session: &SessionId) -> Option<ParkState> {
-    read_path(&paths.state_file(session))
-}
-
-fn read_path(path: &Path) -> Option<ParkState> {
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = std::fs::read_to_string(paths.state_file(session)).ok()?;
     let file: StateFile = serde_json::from_str(&text).ok()?;
     Some(ParkState::from_file(file))
 }

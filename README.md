@@ -11,18 +11,20 @@ The full design, and the reasoning behind every decision, is in `docs/plans/comp
 ## How it works
 
 - `claude-siesta daemon` runs as a launchd agent and polls agterm every `poll_interval`. A session whose claude has been idle for `park_after` is **parked**: its claude is killed (SIGTERM, SIGKILL after 5 s), the session's restore line is pinned to `claude-siesta`, and ` claude-siesta` is typed into the pane once it is back at the fish prompt.
-- `claude-siesta` with no arguments is the **placeholder**: a small full-screen view showing the session name, the working directory, the conversation id, how long it has been idle, when it was parked and the start of the last assistant message. Resuming `exec`s `claude --resume <conv>` in place, in the same pane and the same process.
+- `claude-siesta` with no arguments is the **placeholder**: a small full-screen view showing the session name, the working directory, the conversation id, how long it has been idle, when it was parked and the start of the last assistant message. Resuming `exec`s `claude --enable-auto-mode --resume <conv>` (with `CLAUDE_CODE_NO_FLICKER=1`, plus `CLAUDE_CONFIG_DIR=$HOME/.claude-work` for the `work` profile) in the conversation's cwd, in the same pane and the same process. `claude` is found on the pane's PATH; if it cannot be run, the error is printed and the pane is left at the fish prompt.
 - Because the restore line is pinned to `claude-siesta`, a parked session comes back as a placeholder after an agterm restart instead of a live claude. After a resume, Claude Code's own hooks re-pin the restore line to `claude --resume <conv>`.
 
 Idle is measured from the timestamp of the last assistant message in the transcript, not from the file's mtime: Claude Code appends bookkeeping records with no dialogue behind them. When the transcript has no assistant message, the cc-map entry's `ts` is used.
 
 A session is parked only when all of these hold, checked in this order: its main pane's foreground is a claude; it has a cc-map entry with a conversation and a pid; that pid is still a live claude (guards against a recycled pid); agterm does not report the agent as working (`status active`); the session is not flagged; it is not the selected session of its window; it has been idle for at least `park_after`. A manual `park` skips the last two checks.
 
+Right before the kill the session is read from agterm again and the checks are repeated, so a session that was selected or started working while the tick was running is left alone. If the pane is not back at the fish prompt within 5 s of the kill, or an agtermctl call fails after it, the park is logged as `park-failed` with the step name and the pane stays at a plain fish prompt with claude stopped; the next tick leaves it alone. Type `claude-siesta` in it to get the placeholder, or `claude --resume <conv>` to go straight back.
+
 There is deliberately no sidebar marker: the daemon never sets a status, color, background or context on a session. The placeholder in the pane is the marker, and a `completed` status would make agterm's attention navigation walk every parked row.
 
 ## Resuming
 
-In the placeholder pane, press **Enter** or **Space**, or click anywhere in the pane. `q` or `Esc` leaves the placeholder for a plain fish prompt without resuming.
+In the placeholder pane, press **Enter** or **Space**, or click anywhere in the pane. `q` or `Esc` leaves the placeholder for a plain fish prompt without resuming; the session stays parked (its state file and restore line are kept), and running `claude-siesta` in the pane brings the placeholder back. Outside an agterm session, or in a session with no cc-map entry, the placeholder prints why and exits 1.
 
 From any other shell, `claude-siesta resume <id|prefix>` sends SIGUSR1 to that session's placeholder, which resumes the same way.
 
@@ -38,7 +40,7 @@ claude-siesta status               one row per mapped session: name, conv, idle,
 
 `<id|prefix>` is matched case-insensitively against the start of the session ids in every open agterm window; zero or several matches is an error that names the candidates. A usage error exits 2, any other failure exits 1.
 
-`park` refuses a session that is not a mapped, live, idle claude, or one that is flagged or whose agent is working, and prints the reason. It parks the selected session and ignores `park_after`.
+`park` refuses a session that is not a mapped, live claude, or one that is flagged or whose agent is working, and prints the reason (`not-claude`, `not-mapped`, `pid-not-claude`, `agent-working`, `flagged`). It parks the selected session and ignores `park_after`.
 
 `status` prints `live` for a session whose foreground is claude, `parked` for one running the placeholder or holding a state file, and `shell` otherwise.
 
@@ -54,7 +56,7 @@ poll_interval = "10m"
 - `park_after` (default `2h`): how long a claude must be idle before the daemon parks it.
 - `poll_interval` (default `10m`): how often the daemon looks at agterm.
 
-A duration is an integer followed by `s`, `m`, `h` or `d`. An invalid value or an unknown key stops the daemon and `park` with an error that names the key (exit 2); it is never replaced by a silent default. The placeholder never reads the config, so a broken file never blocks a resume.
+A duration is a positive integer followed by `s`, `m`, `h` or `d`. An invalid value or an unknown key stops the daemon and `park` with an error that names the key (exit 2); it is never replaced by a silent default. Under launchd a broken config makes the daemon exit and restart every 30 s, with the error in `$HOME/Library/Logs/claude-siesta.err.log`. The placeholder never reads the config, so a broken file never blocks a resume.
 
 ## Files
 
@@ -67,8 +69,8 @@ Read:
 
 Written:
 
-- `$HOME/.local/state/claude-siesta/<SESSION-ID>.json`: one state file per parked session (session, conv, profile, when it was parked, when claude last answered, the placeholder's pid). The placeholder deletes it on resume; the daemon deletes files of sessions that no longer exist.
-- `$HOME/.local/state/claude-siesta/claude-siesta.log`: one line per decision (time, action, session, conv, idle minutes, reason). It never contains transcript text or paths, and it is not rotated.
+- `$HOME/.local/state/claude-siesta/<SESSION-ID>.json`: one state file per parked session (session, conv, profile, when it was parked, when claude last answered, the placeholder's pid). The placeholder deletes it on resume; the daemon deletes the files of sessions that are in no open agterm window, so a parked session in a closed window loses its file (Enter in its pane still resumes it, `claude-siesta resume` from another shell no longer finds it).
+- `$HOME/.local/state/claude-siesta/claude-siesta.log`: one line per decision (time, action, session, conv, idle minutes, reason). The actions are `start`, `park`, `skip`, `park-failed`, `cleanup` and `tick-failed`; `skip` is logged only for sessions running claude, with one of the reasons `not-claude`, `not-mapped`, `pid-not-claude`, `agent-working`, `flagged`, `selected` or `not-idle-enough`. It never contains transcript text or paths, and it is not rotated.
 - `$HOME/Library/Logs/claude-siesta.err.log`: the daemon's stderr, written by launchd.
 
 ## Dependency on the cc-map hooks

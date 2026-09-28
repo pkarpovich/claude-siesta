@@ -104,6 +104,10 @@ pub fn run(paths: &Paths) -> ExitCode {
             return ExitCode::from(1);
         }
     };
+    if let Err(error) = install_resume_handler() {
+        eprintln!("claude-siesta: cannot install signal handler: {error}");
+        return ExitCode::from(1);
+    }
     let parked_at = match state::read(paths, &session) {
         Some(ParkState {
             session: _,
@@ -124,10 +128,6 @@ pub fn run(paths: &Paths) -> ExitCode {
         entry,
         parked_at,
     };
-    if let Err(error) = install_resume_handler() {
-        eprintln!("claude-siesta: cannot install signal handler: {error}");
-        return ExitCode::from(1);
-    }
     install_panic_hook();
     let outcome = show(&screen, paths.home());
     restore_terminal();
@@ -336,13 +336,9 @@ fn restore_terminal() {
     if !TERMINAL_ACTIVE.swap(false, Ordering::SeqCst) {
         return;
     }
-    let _ = execute!(
-        io::stdout(),
-        DisableMouseCapture,
-        LeaveAlternateScreen,
-        Show
-    );
+    let _ = execute!(io::stdout(), DisableMouseCapture, LeaveAlternateScreen);
     let _ = disable_raw_mode();
+    let _ = execute!(io::stdout(), Show);
 }
 
 fn show(screen: &Screen, home: &Path) -> io::Result<Outcome> {
