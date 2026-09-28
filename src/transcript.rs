@@ -152,7 +152,7 @@ pub fn read_last_bytes(path: &Path, limit: u64) -> io::Result<(Vec<u8>, TailStar
 
 pub fn idle(now: SystemTime, last: Option<&LastAssistant>, map: &MapEntry) -> Duration {
     let since = match last {
-        Some(LastAssistant { at, text: _ }) => *at,
+        Some(LastAssistant { at, text: _ }) => (*at).max(map.ts),
         None => map.ts,
     };
     now.duration_since(since).unwrap_or(Duration::ZERO)
@@ -274,12 +274,24 @@ mod tests {
     #[test]
     fn idle_from_last_assistant() {
         let last = LastAssistant {
+            at: at(4000),
+            text: String::new(),
+        };
+        assert_eq!(
+            idle(at(4600), Some(&last), &entry(1000)),
+            Duration::from_secs(600)
+        );
+    }
+
+    #[test]
+    fn idle_from_map_ts_after_resume() {
+        let last = LastAssistant {
             at: at(1000),
             text: String::new(),
         };
         assert_eq!(
             idle(at(4600), Some(&last), &entry(4000)),
-            Duration::from_secs(3600)
+            Duration::from_secs(600)
         );
     }
 
